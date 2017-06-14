@@ -1,9 +1,7 @@
-couchdb
-influxdb
-ipaddress
+# This is the ZOF port of the Faucet requirements.
+# This does not include some requirements needed to run ZOF-Gauge...
+
 networkx
-numpy
-pbr>=1.9
-prometheus_client
 pyyaml
-ryu==4.16
+pbr
+zof

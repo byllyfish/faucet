@@ -17,15 +17,16 @@
 # limitations under the License.
 
 import networkx
-from ryu.ofproto import ofproto_v1_3 as ofp
 
 try:
+    from zof_constant import ofp
     from acl import ACL
     from conf import Conf
     from port import Port
     from vlan import VLAN
     from valve_table import ValveTable, ValveGroupTable
 except ImportError:
+    from faucet.zof_constant import ofp
     from faucet.acl import ACL
     from faucet.conf import Conf
     from faucet.port import Port

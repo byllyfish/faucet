@@ -19,11 +19,11 @@
 import hashlib
 import struct
 
-from ryu.ofproto import ofproto_v1_3 as ofp
-
 try:
+    from zof_constant import ofp
     import valve_of
 except ImportError:
+    from faucet.zof_constant import ofp
     from faucet import valve_of
 
 

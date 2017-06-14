@@ -14,9 +14,13 @@
 # limitations under the License.
 
 from bitstring import Bits
-from ryu.ofproto import ofproto_v1_3 as ofp
-from ryu.ofproto import ofproto_v1_3_parser as parser
-from ryu.lib import addrconv
+
+from faucet.zof_constant import ofp, mac, ipv4, ipv6
+from zof.objectview import make_objectview
+from zof.pktview import pktview_from_list
+#from ryu.ofproto import ofproto_v1_3 as ofp
+#from ryu.ofproto import ofproto_v1_3_parser as parser
+#from ryu.lib import addrconv
 
 
 class FakeOFTable():
@@ -37,7 +41,8 @@ class FakeOFTable():
         Adds, Deletes and modify flow modification messages are applied
         according to section 6.4 of the OpenFlow 1.3 specification."""
         for ofmsg in ofmsgs:
-            if isinstance(ofmsg, parser.OFPFlowMod):
+            if ofmsg['type'] == 'FLOW_MOD':
+                ofmsg = make_objectview(ofmsg['msg'])
                 table_id = ofmsg.table_id
                 if table_id == ofp.OFPTT_ALL or table_id is None:
                     tables = self.tables
@@ -129,14 +134,14 @@ class FakeOFTable():
             if matching_fte:
                 for instruction in matching_fte.instructions:
                     instructions.append(instruction)
-                    if instruction.type == ofp.OFPIT_GOTO_TABLE:
+                    if instruction.instruction == 'GOTO_TABLE':
                         if table_id < instruction.table_id:
                             table_id = instruction.table_id
                             goto_table = True
-                    elif instruction.type == ofp.OFPIT_APPLY_ACTIONS:
+                    elif instruction.instruction == 'APPLY_ACTIONS':
                         for action in instruction.actions:
-                            if action.type == ofp.OFPAT_SET_FIELD:
-                                packet_dict[action.key] = action.value
+                            if action.action == 'SET_FIELD':
+                                packet_dict[action.field.lower()] = action.value
         return instructions
 
     def is_output(self, match, port=None, vid=None):
@@ -166,26 +171,26 @@ class FakeOFTable():
         instructions = self.lookup(match)
 
         for instruction in instructions:
-            if instruction.type == ofp.OFPIT_APPLY_ACTIONS:
+            if instruction.instruction == 'APPLY_ACTIONS':
                 for action in instruction.actions:
 
-                    if action.type == ofp.OFPAT_PUSH_VLAN:
+                    if action.action == 'PUSH_VLAN':
                         vid_stack.append(ofp.OFPVID_PRESENT)
 
-                    elif action.type == ofp.OFPAT_POP_VLAN:
+                    elif action.action == 'POP_VLAN':
                         vid_stack.pop()
 
-                    elif action.type == ofp.OFPAT_SET_FIELD:
-                        if action.key == 'vlan_vid':
+                    elif action.action == 'SET_FIELD':
+                        if action.field.lower() == 'vlan_vid':
                             vid_stack[-1] = action.value
                         else:
                             continue
 
-                    elif action.type == ofp.OFPAT_OUTPUT:
+                    elif action.action == 'OUTPUT':
                         if port is None:
                             return True
 
-                        elif action.port == port:
+                        elif action.port_no == port:
 
                             if vid is None:
                                 return True
@@ -239,7 +244,7 @@ class FlowMod(object):
            flowmod.out_port != ofp.OFPP_ANY:
             self.out_port = flowmod.out_port
 
-        for key, v in flowmod.match.items():
+        for key, v in pktview_from_list(flowmod.match).items():
             if isinstance(v, tuple):
                 val, mask = v
             else:
@@ -257,10 +262,10 @@ class FlowMod(object):
         if self.out_port is None or self.out_port == ofp.OFPP_ANY:
             return True
         for instruction in other.instructions:
-            if instruction.type == ofp.OFPIT_APPLY_ACTIONS:
+            if instruction.instruction == 'APPLY_ACTIONS':
                 for action in instruction.actions:
-                    if action.type == ofp.OFPAT_OUTPUT:
-                        if action.port == self.out_port:
+                    if action.action == 'OUTPUT':
+                        if action.port_no == self.out_port:
                             return True
         return False
 
@@ -339,19 +344,19 @@ class FlowMod(object):
             if val is -1:
                 val = Bits(int=-1, length=48)
             elif isinstance(val, str):
-                val = Bits(bytes=addrconv.mac.text_to_bin(val), length=48)
+                val = Bits(bytes=mac.text_to_bin(val), length=48)
 
         elif key in self.IPV4_MATCH_FIELDS:
             if val is -1:
                 val = Bits(int=-1, length=32)
             elif isinstance(val, str):
-                val = Bits(bytes=addrconv.ipv4.text_to_bin(val), length=32)
+                val = Bits(bytes=ipv4.text_to_bin(val), length=32)
 
         elif key in self.IPV6_MATCH_FIELDS:
             if val is -1:
                 val = Bits(int=-1, length=128)
             elif isinstance(val, str):
-                val = Bits(bytes=addrconv.ipv6.text_to_bin(val), length=128)
+                val = Bits(bytes=ipv6.text_to_bin(val), length=128)
 
         else:
             val = Bits(int=int(val), length=64)

@@ -7,6 +7,7 @@ import shutil
 import subprocess
 
 import netifaces
+import psutil
 
 # pylint: disable=import-error
 from mininet.topo import Topo
@@ -251,8 +252,9 @@ class BaseFAUCET(Controller):
         """Return True if port in specified TCP state."""
         listening_out = self.cmd(
             faucet_mininet_test_util.tcp_listening_cmd(port, state=state)).split()
+        rpid = self.ryu_pid()
         for pid in listening_out:
-            if int(pid) == self.ryu_pid():
+            if int(pid) == rpid or psutil.Process(int(pid)).ppid() == rpid:
                 return True
         return False
 
