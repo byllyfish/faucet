@@ -1,0 +1,60 @@
+FROM ubuntu:16.04
+
+RUN apt-key adv --keyserver keyserver.ubuntu.com --recv-keys FFBE06FBB4EDC679174DD2CCD5AA2ED445128570 \
+    && echo "deb http://ppa.launchpad.net/byllyfish/oftr/ubuntu xenial main" >> /etc/apt/sources.list \
+    && apt-get update && apt-get install -y --no-install-recommends \
+        oftr \
+        python3 \
+        python3-pip \
+        python3-setuptools \
+        libpython3.5-dev \
+        python3-numpy
+
+RUN \
+  apt-get update && \
+  DEBIAN_FRONTEND=noninteractive apt-get install -qy --no-install-recommends \
+    bridge-utils \
+    build-essential \
+    curl \
+    fping \
+    gcc \
+    git \
+    influxdb \
+    iperf \
+    iputils-ping \
+    ladvd \
+    libpython2.7-dev \
+    libyaml-dev \
+    lsof \
+    ndisc6 \
+    net-tools \
+    netcat-openbsd \
+    parallel \
+    psmisc \
+    python-pip \
+    sudo \
+    tcpdump \
+    tshark \
+    vlan \
+    wpasupplicant
+
+RUN \
+  git clone -b 2.2.2 --depth=1 https://github.com/mininet/mininet && \
+  mininet/util/install.sh -nfv && \
+  apt-get purge -qy pylint python-astroid
+
+RUN pip3 install --upgrade setuptools wheel pip \
+    && pip3 install networkx==1.11 pyyaml aiohttp prometheus_client influxdb couchdb bitstring pbr requests \
+    && cd /root \
+    && git clone -b develop --single-branch --depth=1 https://github.com/byllyfish/zof.git \
+    && git clone -b port5 --single-branch --depth=1 https://github.com/byllyfish/faucet.git \
+    && cd /root/zof \
+    && python3 setup.py develop \
+    && pip3 install -U chardet \
+    && cd /root/faucet \
+    && python3 setup.py develop
+
+RUN pip2 install --upgrade setuptools wheel \
+    && pip2 install ipaddress pyyaml concurrencytest packaging netifaces requests scapy exabgp psutil
+
+CMD ["/root/faucet/docker/zof-runtests.sh"]

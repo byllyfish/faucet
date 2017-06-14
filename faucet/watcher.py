@@ -68,16 +68,15 @@ class GaugePortStateLogger(GaugePortStateBaseLogger):
 
     def update(self, rcv_time, dp_id, msg):
         rcv_time_str = _rcv_time(rcv_time)
-        reason = msg.reason
-        port_no = msg.desc.port_no
-        ofp = msg.datapath.ofproto
+        reason = msg['reason']
+        port_no = msg['port_no']
         log_msg = 'port %s unknown state %s' % (port_no, reason)
-        if reason == ofp.OFPPR_ADD:
+        if reason == 'ADD':
             log_msg = 'port %s added' % port_no
-        elif reason == ofp.OFPPR_DELETE:
+        elif reason == 'DELETE':
             log_msg = 'port %s deleted' % port_no
-        elif reason == ofp.OFPPR_MODIFY:
-            link_down = (msg.desc.state & ofp.OFPPS_LINK_DOWN)
+        elif reason == 'MODIFY':
+            link_down = 'LINK_DOWN' in msg['state']
             if link_down:
                 log_msg = 'port %s down' % port_no
             else:
@@ -109,7 +108,7 @@ class GaugePortStatsLogger(GaugePortStatsPoller):
     def update(self, rcv_time, dp_id, msg):
         super(GaugePortStatsLogger, self).update(rcv_time, dp_id, msg)
         rcv_time_str = _rcv_time(rcv_time)
-        for stat in msg.body:
+        for stat in msg:
             port_name = self._stat_port_name(msg, stat, dp_id)
             if port_name is not None:
                 with open(self.conf.file, 'a') as logfile:
@@ -134,7 +133,6 @@ class GaugeFlowTableLogger(GaugeFlowTablePoller):
     def update(self, rcv_time, dp_id, msg):
         super(GaugeFlowTableLogger, self).update(rcv_time, dp_id, msg)
         rcv_time_str = _rcv_time(rcv_time)
-        jsondict = msg.to_jsondict()
         with open(self.conf.file, 'a') as logfile:
             ref = '-'.join((self.dp.name, 'flowtables'))
             logfile.write(
@@ -142,4 +140,4 @@ class GaugeFlowTableLogger(GaugeFlowTablePoller):
                     '---',
                     'time: %s' % rcv_time_str,
                     'ref: %s' % ref,
-                    'msg: %s' % json.dumps(jsondict, indent=4))))
+                    'msg: %r' % msg)))
