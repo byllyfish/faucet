@@ -90,4 +90,5 @@ class FaucetMetrics(object):
             'dp_status',
             'status of datapaths',
             ['dpid'])
-        start_http_server(prom_port, prom_addr)
+        if prom_port:
+            start_http_server(prom_port, prom_addr)

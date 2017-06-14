@@ -293,14 +293,14 @@ def run_test_suites(sanity_tests, single_tests, parallel_tests):
         results = []
         if parallel_tests.countTestCases():
             max_parallel_tests = min(parallel_tests.countTestCases(), MAX_PARALLEL_TESTS)
-            parallel_runner = unittest.TextTestRunner(verbosity=255)
+            parallel_runner = unittest.TextTestRunner(verbosity=255, failfast=False)
             parallel_suite = ConcurrentTestSuite(
                 parallel_tests, fork_for_tests(max_parallel_tests))
             results.append(parallel_runner.run(parallel_suite))
         # TODO: Tests that are serialized generally depend on hardcoded ports.
         # Make them use dynamic ports.
         if single_tests.countTestCases():
-            single_runner = unittest.TextTestRunner(verbosity=255)
+            single_runner = unittest.TextTestRunner(verbosity=255, failfast=False)
             results.append(single_runner.run(single_tests))
         all_successful = True
         for result in results:

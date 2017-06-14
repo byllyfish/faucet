@@ -16,9 +16,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from ryu.lib import ofctl_v1_3 as ofctl
-from ryu.ofproto import ofproto_v1_3 as ofp
-from ryu.ofproto import ofproto_v1_3_parser as parser
+#from ryu.lib import ofctl_v1_3 as ofctl
+#from ryu.ofproto import ofproto_v1_3 as ofp
+#from ryu.ofproto import ofproto_v1_3_parser as parser
 
 
 try:
@@ -64,10 +64,13 @@ class Meter(Conf):
         self.update(conf)
         self._id = _id
         conf['entry']['meter_id'] = self.meter_id
-        noop_dp = NoopDP()
-        noop_dp.ofproto = ofp
-        noop_dp.ofproto_parser = parser
-        ofctl.mod_meter_entry(noop_dp, self.entry, ofp.OFPMC_ADD)
-        noop_dp.msg.xid = None
-        noop_dp.msg.datapath = None
-        self.entry_msg = noop_dp.msg
+        # This should go through valve_of...
+        self.entry_msg = {
+            'type': 'METER_MOD',
+            'msg': {
+                'command': 'ADD',
+                'flags': [conf['entry']['flags']],
+                'meter_id': conf['entry']['meter_id'],
+                'bands': conf['entry']['bands']
+            }
+        }
