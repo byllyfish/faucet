@@ -101,8 +101,9 @@ time                    dp_name                 port_name       value
 
     def update(self, rcv_time, dp_id, msg):
         super(GaugePortStateInfluxDBLogger, self).update(rcv_time, dp_id, msg)
-        reason = msg.reason
-        port_no = msg.desc.port_no
+        _reason_map = {'ADD': 0, 'DELETE': 1, 'MODIFY': 2}
+        reason = _reason_map.get(msg['reason'], msg['reason'])
+        port_no = msg['port_no']
         if port_no in self.dp.ports:
             port_name = self.dp.ports[port_no].name
             points = [
@@ -148,7 +149,7 @@ time                    dp_name                 port_name       value
     def update(self, rcv_time, dp_id, msg):
         super(GaugePortStatsInfluxDBLogger, self).update(rcv_time, dp_id, msg)
         points = []
-        for stat in msg.body:
+        for stat in msg:
             port_name = self._stat_port_name(msg, stat, dp_id)
             for stat_name, stat_val in self._format_port_stats('_', stat):
                 points.append(
@@ -184,29 +185,23 @@ time                arp_tpa dp_name            eth_dst eth_src eth_type icmpv6_t
 
     def update(self, rcv_time, dp_id, msg):
         super(GaugeFlowTableInfluxDBLogger, self).update(rcv_time, dp_id, msg)
-        jsondict = msg.to_jsondict()
         points = []
-        for stats_reply in jsondict['OFPFlowStatsReply']['body']:
-            stats = stats_reply['OFPFlowStats']
-            packet_count = int(stats['packet_count'])
-            byte_count = int(stats['byte_count'])
-            instructions = stats['instructions']
+        for stats in msg:
+            packet_count = stats['packet_count']
+            byte_count = stats['byte_count']
             tags = {
                 'dp_name': self.dp.name,
-                'table_id': int(stats['table_id']),
-                'priority': int(stats['priority']),
-                'inst_count': len(instructions),
+                'table_id': stats['table_id'],
+                'priority': stats['priority'],
+                'inst_count': len(stats['instructions'])
             }
-            oxm_matches = stats['match']['OFPMatch']['oxm_fields']
-            for oxm_match in oxm_matches:
-                oxm_tlv = oxm_match['OXMTlv']
-                mask = oxm_tlv['mask']
-                val = oxm_tlv['value']
-                field = oxm_tlv['field']
-                if mask is not None:
-                    val = '/'.join((str(val), str(mask)))
+            for oxm in stats['match']:
+                val = oxm['value']
+                field = oxm['field'].lower()
+                if 'mask' in oxm:
+                    val = '/'.join((str(val), str(oxm['mask'])))
                 tags[field] = val
-                if field == 'vlan_vid' and mask is None:
+                if field == 'vlan_vid' and 'mask' not in oxm:
                     tags['vlan'] = devid_present(int(val))
             points.append(
                 self.make_point(tags, rcv_time, 'flow_packet_count', packet_count))

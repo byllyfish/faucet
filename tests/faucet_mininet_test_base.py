@@ -28,10 +28,23 @@ from mininet.log import error, output
 from mininet.net import Mininet
 from mininet.node import Intf
 from mininet.util import dumpNodeConnections, pmonitor
-from ryu.ofproto import ofproto_v1_3 as ofp
+from faucet.zof_constant import ofp
 
 import faucet_mininet_test_util
 import faucet_mininet_test_topo
+
+# Import a sub-module from zof (a Python3-only framework) without loading
+# zof package itself.
+
+def _load_module(name):
+    import imp
+    path = None
+    for name in name.split('.'):
+        f, path, info = imp.find_module(name, path)
+        path = [path]
+    return imp.load_module(name, f, path[0], info)
+
+convert_from_ofctl = _load_module('zof.ofctl').convert_from_ofctl
 
 
 class FaucetTestBase(unittest.TestCase):
@@ -426,10 +439,19 @@ class FaucetTestBase(unittest.TestCase):
             json={'dpid': str(int_dpid), 'port_no': str(port_no),
                   'config': str(config), 'mask': str(mask)})
 
-    def _signal_proc_on_port(self, host, port, signal):
+    def _signal_proc_on_port(self, host, port, signal, parent=False):
         tcp_pattern = '%s/tcp' % port
-        fuser_out = host.cmd('fuser %s -k -%u' % (tcp_pattern, signal))
-        return re.search(r'%s:\s+\d+' % tcp_pattern, fuser_out)
+        if parent:
+            # For zof, we really need to signal the *parent* process.
+            fuser_out = host.cmd('fuser %s' % tcp_pattern)
+            m = re.search(r'%s:\s+(\d+)' % tcp_pattern, fuser_out)
+            if not m:
+                return False
+            kill_out = host.cmd('kill -%u `ps -o ppid= %s`' % (signal, m.group(1)))
+            return True
+        else:
+            fuser_out = host.cmd('fuser %s -k -%u' % (tcp_pattern, signal))
+            return re.search(r'%s:\s+\d+' % tcp_pattern, fuser_out)
 
     def _get_ofchannel_logs(self):
         with open(self.env['faucet']['FAUCET_CONFIG']) as config_file:
@@ -679,6 +701,7 @@ dbs:
 
     def get_matching_flows_on_dpid(self, dpid, match, timeout=10, table_id=None,
                                    actions=None, match_exact=False, hard_timeout=0):
+        match = convert_from_ofctl(match)
         flowdump = os.path.join(self.tmpdir, 'flowdump-%s.txt' % dpid)
         with open(flowdump, 'w') as flowdump_file:
             for _ in range(timeout):
@@ -990,7 +1013,7 @@ dbs:
         """Send a HUP signal to the controller."""
         controller = self._get_controller()
         self.assertTrue(
-            self._signal_proc_on_port(controller, controller.port, 1))
+            self._signal_proc_on_port(controller, controller.port, 1, True))
 
     def hup_gauge(self):
         self.assertTrue(
