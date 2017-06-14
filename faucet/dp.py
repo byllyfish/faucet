@@ -17,7 +17,7 @@
 # limitations under the License.
 
 import networkx
-from ryu.ofproto import ofproto_v1_3 as ofp
+from zof_constant import ofp
 
 try:
     from acl import ACL

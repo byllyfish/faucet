@@ -75,7 +75,7 @@ class GaugePortStatsPrometheusPoller(GaugePortStatsPoller):
 
     def update(self, rcv_time, dp_id, msg):
         super(GaugePortStatsPrometheusPoller, self).update(rcv_time, dp_id, msg)
-        for stat in msg.body:
+        for stat in msg:
             port_name = self._stat_port_name(msg, stat, dp_id)
             for stat_name, stat_val in self._format_port_stats(
                     PROM_PREFIX_DELIM, stat):

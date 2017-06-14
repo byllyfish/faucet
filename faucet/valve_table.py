@@ -16,7 +16,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from ryu.ofproto import ofproto_v1_3 as ofp
+from zof_constant import ofp
 
 try:
     import valve_of

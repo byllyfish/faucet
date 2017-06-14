@@ -443,7 +443,7 @@ def run_test_suites(sanity_tests, single_tests, parallel_tests):
         # TODO: Tests that are serialized generally depend on hardcoded ports.
         # Make them use dynamic ports.
         if single_tests.countTestCases():
-            single_runner = unittest.TextTestRunner(verbosity=255)
+            single_runner = unittest.TextTestRunner(verbosity=255, failfast=False)
             results.append(single_runner.run(single_tests))
         all_successful = True
         for result in results:
