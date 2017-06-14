@@ -17,13 +17,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from ryu.lib import mac
-from ryu.ofproto import ofproto_v1_3 as ofp
-
 try:
+    from zof_constant import mac, ofp
     import valve_of
     import valve_packet
 except ImportError:
+    from faucet.zof_constant import mac, ofp
     from faucet import valve_of
     from faucet import valve_packet
 

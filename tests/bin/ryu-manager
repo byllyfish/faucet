@@ -1,0 +1,35 @@
+#!/bin/bash
+
+
+if [ $1 = "--version" ]; then 
+  echo 'ryu-manager 4.9'
+  exit 0
+fi
+
+log() {
+  echo "$@" >> /tmp/ryu-manager.log
+}
+
+log "ryu-manager $@"
+
+PROG=zof_faucet.py
+
+while true; do
+  case $1 in 
+    --*)
+      break
+      ;;
+    faucet.gauge)
+      PROG=zof_gauge.py
+      ;;
+    *)
+      log "ryu-manager: ignore $1"
+      ;;
+  esac
+  shift
+done
+
+#log python3 ../faucet/$PROG "$@"
+
+export OFP_APP_OFTR_ARGS="--logfile=/tmp/oftr-$$.log --loglevel=debug"
+exec python3 ../faucet/$PROG "$@"
