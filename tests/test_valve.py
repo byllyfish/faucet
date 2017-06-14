@@ -22,8 +22,10 @@ import tempfile
 import shutil
 from fakeoftable import FakeOFTable
 
-from ryu.ofproto import ofproto_v1_3 as ofp
-from ryu.lib.packet import ethernet, arp, vlan, ipv4, ipv6, packet
+from faucet.zof_constant import ofp, ipv4, ipv6, arp
+from zof.pktview import make_pktview
+#from ryu.ofproto import ofproto_v1_3 as ofp
+#from ryu.lib.packet import ethernet, arp, vlan, ipv4, ipv6, packet
 
 testdir = os.path.dirname(__file__)
 srcdir = '../'
@@ -34,33 +36,23 @@ from faucet.config_parser import dp_parser
 
 
 def build_pkt(pkt):
-    layers = []
-    if 'arp_target_ip' in pkt:
-        ethertype = 0x806
-        layers.append(arp.arp(dst_ip=pkt['arp_target_ip']))
-    elif 'ipv6_src' in pkt:
-        ethertype = 0x86DD
-        layers.append(ipv6.ipv6(src=pkt['ipv6_src'], dst=pkt['ipv6_src']))
-    else:
-        ethertype = 0x800
-        if 'ipv4_src' in pkt:
-            net = ipv4.ipv4(src=pkt['ipv4_src'], dst=pkt['ipv4_dst'])
-        else:
-            net = ipv4.ipv4()
-        layers.append(net)
+    result = make_pktview(eth_src=pkt['eth_src'], eth_dst=pkt['eth_dst'])
     if 'vid' in pkt:
-        tpid = 0x8100
-        layers.append(vlan.vlan(vid=pkt['vid'], ethertype=ethertype))
+        result.vlan_vid = pkt['vid']
+    elif 'vlan_vid' in pkt:
+        result.vlan_vid = pkt['vlan_vid']
+    if 'arp_target_ip' in pkt:
+        result.eth_type = 0x0806
+        result.arp_tpa = pkt['arp_target_ip']
+        result.arp_op = arp.ARP_REQUEST
+    elif 'ipv6_src' in pkt:
+        result.eth_type = 0x86DD
+        result.ipv6_src = pkt['ipv6_src']
+        result.ipv6_dst = pkt['ipv6_dst']
     else:
-        tpid = ethertype
-    eth = ethernet.ethernet(
-        dst=pkt['eth_dst'],
-        src=pkt['eth_src'],
-        ethertype=tpid)
-    layers.append(eth)
-    result = packet.Packet()
-    for layer in layers:
-        result.add_protocol(layer)
+        result.eth_type = 0x0800
+        result.ipv4_src = pkt.get('ipv4_src', '0.0.0.0')
+        result.ipv4_dst = pkt.get('ipv4_dst', '0.0.0.0')
     return result
 
 
@@ -142,9 +134,9 @@ vlans:
 
     def rcv_packet(self, port, vid, match):
         pkt = build_pkt(match)
-        pkt.serialize()
+        #pkt.serialize()
         pkt_meta = self.valve.parse_rcv_packet(
-            port, vid, pkt.data, pkt)
+            port, vid, b'', pkt)
         rcv_packet_ofmsgs = self.valve.rcv_packet(
             dp_id=1,
             valves={},

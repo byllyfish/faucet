@@ -19,12 +19,13 @@
 import logging
 import random
 
-from ryu.lib import hub
-
 try:
     from valve_util import dpid_log
 except ImportError:
     from faucet.valve_util import dpid_log
+
+import asyncio
+import zof
 
 
 class GaugePoller(object):
@@ -74,9 +75,9 @@ class GaugePoller(object):
         raise NotImplementedError
 
     def _stat_port_name(self, msg, stat, dp_id):
-        if stat.port_no == msg.datapath.ofproto.OFPP_CONTROLLER:
+        if stat.port_no == 'CONTROLLER':
             return 'CONTROLLER'
-        elif stat.port_no == msg.datapath.ofproto.OFPP_LOCAL:
+        elif stat.port_no == 'LOCAL':
             return 'LOCAL'
         elif stat.port_no in self.dp.ports:
             return self.dp.ports[stat.port_no].name
@@ -118,16 +119,22 @@ class GaugeThreadPoller(GaugePoller):
         self.interval = self.conf.interval
         self.ryudp = None
 
-    def start(self, ryudp):
-        self.ryudp = ryudp
+    def start(self, dp_id):
         self.stop()
-        self.thread = hub.spawn(self)
+        self.thread = zof.ensure_future(self.run(dp_id))
 
     def stop(self):
         if self.running():
-            hub.kill(self.thread)
-            hub.joinall([self.thread])
+            self.thread.cancel()
             self.thread = None
+
+    async def run(self, dp_id):
+        await asyncio.sleep(random.randint(1, self.conf.interval))
+        while True:
+            ofmsg = zof.compile(self.send_req())
+            response = await ofmsg.request(datapath_id=hex(dp_id))
+            self.update(float(response.time), dp_id, response.msg)
+            await asyncio.sleep(self.conf.interval)
 
     def running(self):
         return self.thread is not None
@@ -154,11 +161,7 @@ class GaugePortStatsPoller(GaugeThreadPoller):
     """
 
     def send_req(self):
-        if self.ryudp:
-            ofp = self.ryudp.ofproto
-            ofp_parser = self.ryudp.ofproto_parser
-            req = ofp_parser.OFPPortStatsRequest(self.ryudp, 0, ofp.OFPP_ANY)
-            self.ryudp.send_msg(req)
+        return {'type': 'REQUEST.PORT_STATS', 'msg':{'port_no': 'ANY'}}
 
     def no_response(self):
         self.logger.info(
@@ -174,14 +177,13 @@ class GaugeFlowTablePoller(GaugeThreadPoller):
     """
 
     def send_req(self):
-        if self.ryudp:
-            ofp = self.ryudp.ofproto
-            ofp_parser = self.ryudp.ofproto_parser
-            match = ofp_parser.OFPMatch()
-            req = ofp_parser.OFPFlowStatsRequest(
-                self.ryudp, 0, ofp.OFPTT_ALL, ofp.OFPP_ANY, ofp.OFPG_ANY,
-                0, 0, match)
-            self.ryudp.send_msg(req)
+        return {'type': 'REQUEST.FLOW', 'msg':{
+            'table_id': 'ALL',
+            'out_port': 'ANY',
+            'out_group': 'ANY',
+            'cookie': 0,
+            'cookie_mask': 0,
+            'match': []}}
 
     def no_response(self):
         self.logger.info(

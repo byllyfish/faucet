@@ -18,11 +18,10 @@
 # limitations under the License.
 
 import ipaddress
+import struct
 
-from ryu.lib import mac
-from ryu.lib.packet import arp, ethernet, icmp, icmpv6, ipv4, ipv6, stream_parser, packet, vlan
-from ryu.ofproto import ether
-from ryu.ofproto import inet
+from zof.pktview import make_pktview
+from zof_constant import ether, mac, arp, inet, icmp, icmpv6, ofp
 
 try:
     from valve_util import btos
@@ -45,7 +44,7 @@ def parse_pkt(pkt):
     Returns:
         ryu.lib.packet.ethernet: Ethernet packet.
     """
-    return pkt.get_protocol(ethernet.ethernet)
+    return pkt.get_protocol(ether.ether)
 
 
 def parse_packet_in_pkt(data, max_len):
@@ -105,17 +104,9 @@ def build_pkt_header(vid, eth_src, eth_dst, dl_type):
     Returns:
         ryu.lib.packet.ethernet: Ethernet packet with header.
     """
-    pkt_header = packet.Packet()
-    if vid is None:
-        eth_header = ethernet.ethernet(
-            eth_dst, eth_src, dl_type)
-        pkt_header.add_protocol(eth_header)
-    else:
-        eth_header = ethernet.ethernet(
-            eth_dst, eth_src, ether.ETH_TYPE_8021Q)
-        pkt_header.add_protocol(eth_header)
-        vlan_header = vlan.vlan(vid=vid, ethertype=dl_type)
-        pkt_header.add_protocol(vlan_header)
+    pkt_header = make_pktview(eth_dst=eth_dst, eth_src=eth_src, eth_type=dl_type)
+    if vid is not None:
+        pkt_header.vlan_vid = vid | ofp.OFPVID_PRESENT
     return pkt_header
 
 
@@ -131,11 +122,11 @@ def arp_request(vid, eth_src, src_ip, dst_ip):
         ryu.lib.packet.arp: serialized ARP request packet.
     """
     pkt = build_pkt_header(vid, eth_src, mac.BROADCAST_STR, ether.ETH_TYPE_ARP)
-    arp_pkt = arp.arp(
-        opcode=arp.ARP_REQUEST, src_mac=eth_src,
-        src_ip=str(src_ip), dst_mac=mac.DONTCARE_STR, dst_ip=str(dst_ip))
-    pkt.add_protocol(arp_pkt)
-    pkt.serialize()
+    pkt.arp_op = arp.ARP_REQUEST
+    pkt.arp_sha = eth_src
+    pkt.arp_tha = mac.DONTCARE_STR
+    pkt.arp_spa = src_ip
+    pkt.arp_tpa = dst_ip
     return pkt
 
 
@@ -152,11 +143,11 @@ def arp_reply(vid, eth_src, eth_dst, src_ip, dst_ip):
         ryu.lib.packet.arp: serialized ARP reply packet.
     """
     pkt = build_pkt_header(vid, eth_src, eth_dst, ether.ETH_TYPE_ARP)
-    arp_pkt = arp.arp(
-        opcode=arp.ARP_REPLY, src_mac=eth_src,
-        src_ip=src_ip, dst_mac=eth_dst, dst_ip=dst_ip)
-    pkt.add_protocol(arp_pkt)
-    pkt.serialize()
+    pkt.arp_op = arp.ARP_REPLY
+    pkt.arp_sha = eth_src
+    pkt.arp_tha = eth_dst
+    pkt.arp_spa = src_ip
+    pkt.arp_tpa = dst_ip
     return pkt
 
 
@@ -173,15 +164,19 @@ def echo_reply(vid, eth_src, eth_dst, src_ip, dst_ip, data):
         ryu.lib.packet.icmp: serialized ICMP echo reply packet.
     """
     pkt = build_pkt_header(vid, eth_src, eth_dst, ether.ETH_TYPE_IP)
-    ipv4_pkt = ipv4.ipv4(
-        dst=dst_ip, src=src_ip, proto=inet.IPPROTO_ICMP)
-    pkt.add_protocol(ipv4_pkt)
-    icmp_pkt = icmp.icmp(
-        type_=icmp.ICMP_ECHO_REPLY, code=icmp.ICMP_ECHO_REPLY_CODE,
-        data=data)
-    pkt.add_protocol(icmp_pkt)
-    pkt.serialize()
+    pkt.ip_proto = inet.IPPROTO_ICMP
+    pkt.ipv4_src = src_ip
+    pkt.ipv4_dst = dst_ip
+    pkt.icmpv4_type = icmp.ICMP_ECHO_REPLY
+    pkt.icmpv4_code = icmp.ICMP_ECHO_CODE
+    pkt.payload = data
     return pkt
+
+
+def _format_mac(value):  # FIXME(bfish): Unused...
+    if isinstance(value, str):  # for python 2.7 compatibility
+        return ':'.join('%02X' % ord(x) for x in value)
+    return ':'.join('%02X' % x for x in value)
 
 
 def ipv6_link_eth_mcast(dst_ip):
@@ -235,16 +230,13 @@ def nd_request(vid, eth_src, src_ip, dst_ip):
     nd_mac = ipv6_link_eth_mcast(dst_ip)
     ip_gw_mcast = ipv6_solicited_node_from_ucast(dst_ip)
     pkt = build_pkt_header(vid, eth_src, nd_mac, ether.ETH_TYPE_IPV6)
-    ipv6_pkt = ipv6.ipv6(
-        src=str(src_ip), dst=ip_gw_mcast, nxt=inet.IPPROTO_ICMPV6)
-    pkt.add_protocol(ipv6_pkt)
-    icmpv6_pkt = icmpv6.icmpv6(
-        type_=icmpv6.ND_NEIGHBOR_SOLICIT,
-        data=icmpv6.nd_neighbor(
-            dst=dst_ip,
-            option=icmpv6.nd_option_sla(hw_src=eth_src)))
-    pkt.add_protocol(icmpv6_pkt)
-    pkt.serialize()
+    pkt.ipv6_src = src_ip
+    pkt.ipv6_dst = ip_gw_mcast
+    pkt.ip_proto = inet.IPPROTO_ICMPV6
+    pkt.hop_limit = 255
+    pkt.icmpv6_type = icmpv6.ND_NEIGHBOR_SOLICIT
+    pkt.ipv6_nd_target = dst_ip
+    pkt.ipv6_nd_sll = eth_src
     return pkt
 
 
@@ -260,26 +252,19 @@ def nd_advert(vid, eth_src, eth_dst, src_ip, dst_ip):
     Returns:
         ryu.lib.packet.ethernet: Serialized IPv6 neighbor discovery packet.
     """
-    pkt = build_pkt_header(
-        vid, eth_src, eth_dst, ether.ETH_TYPE_IPV6)
-    ipv6_icmp6 = ipv6.ipv6(
-        src=src_ip,
-        dst=dst_ip,
-        nxt=inet.IPPROTO_ICMPV6,
-        hop_limit=IPV6_MAX_HOP_LIM)
-    pkt.add_protocol(ipv6_icmp6)
-    icmpv6_nd_advert = icmpv6.icmpv6(
-        type_=icmpv6.ND_NEIGHBOR_ADVERT,
-        data=icmpv6.nd_neighbor(
-            dst=src_ip,
-            option=icmpv6.nd_option_tla(hw_src=eth_src), res=7))
-    pkt.add_protocol(icmpv6_nd_advert)
-    pkt.serialize()
+    pkt = build_pkt_header(vid, eth_src, eth_dst, ether.ETH_TYPE_IPV6)
+    pkt.ipv6_src = src_ip
+    pkt.ipv6_dst = dst_ip
+    pkt.ip_proto = inet.IPPROTO_ICMPV6
+    pkt.hop_limit = IPV6_MAX_HOP_LIM
+    pkt.icmpv6_type = icmpv6.ND_NEIGHBOR_ADVERT
+    pkt.ipv6_nd_target = src_ip
+    pkt.ipv6_nd_tll = eth_src
+    pkt.ipv6_nd_res = (7 << 29)
     return pkt
 
 
-def icmpv6_echo_reply(vid, eth_src, eth_dst, src_ip, dst_ip, hop_limit,
-                      id_, seq, data):
+def icmpv6_echo_reply(vid, eth_src, eth_dst, src_ip, dst_ip, hop_limit, data):
     """Return IPv6 ICMP echo reply packet.
 
     Args:
@@ -295,19 +280,14 @@ def icmpv6_echo_reply(vid, eth_src, eth_dst, src_ip, dst_ip, hop_limit,
     Returns:
         ryu.lib.packet.ethernet: Serialized IPv6 ICMP echo reply packet.
     """
-    pkt = build_pkt_header(
-        vid, eth_src, eth_dst, ether.ETH_TYPE_IPV6)
-    ipv6_reply = ipv6.ipv6(
-        src=src_ip,
-        dst=dst_ip,
-        nxt=inet.IPPROTO_ICMPV6,
-        hop_limit=hop_limit)
-    pkt.add_protocol(ipv6_reply)
-    icmpv6_reply = icmpv6.icmpv6(
-        type_=icmpv6.ICMPV6_ECHO_REPLY,
-        data=icmpv6.echo(id_=id_, seq=seq, data=data))
-    pkt.add_protocol(icmpv6_reply)
-    pkt.serialize()
+    pkt = build_pkt_header(vid, eth_src, eth_dst, ether.ETH_TYPE_IPV6)
+    pkt.ipv6_src = src_ip
+    pkt.ipv6_dst = dst_ip
+    pkt.ip_proto = inet.IPPROTO_ICMPV6
+    pkt.hop_limit = hop_limit
+    pkt.icmpv6_type = icmpv6.ICMPV6_ECHO_REPLY
+    # N.B. we assume data already contains them id_ and seq.
+    pkt.payload = data
     return pkt
 
 
@@ -326,32 +306,53 @@ def router_advert(_vlan, vid, eth_src, eth_dst, src_ip, dst_ip,
     Returns:
         ryu.lib.packet.ethernet: Serialized IPv6 ICMP RA packet.
     """
-    pkt = build_pkt_header(
-        vid, eth_src, eth_dst, ether.ETH_TYPE_IPV6)
-    ipv6_pkt = ipv6.ipv6(
-        src=src_ip,
-        dst=dst_ip,
-        nxt=inet.IPPROTO_ICMPV6,
-        hop_limit=IPV6_MAX_HOP_LIM)
-    pkt.add_protocol(ipv6_pkt)
-    options = []
-    for vip in vips:
-        options.append(
-            icmpv6.nd_option_pi(
-                prefix=vip.network.network_address,
-                pl=vip.network.prefixlen,
-                res1=pi_flags,
-                val_l=86400,
-                pre_l=14400,
-            ))
-    options.append(icmpv6.nd_option_sla(hw_src=eth_src))
-    # https://tools.ietf.org/html/rfc4861#section-4.6.2
-    icmpv6_ra_pkt = icmpv6.icmpv6(
-        type_=icmpv6.ND_ROUTER_ADVERT,
-        data=icmpv6.nd_router_advert(
-            rou_l=1800,
-            ch_l=IPV6_MAX_HOP_LIM,
-            options=options))
-    pkt.add_protocol(icmpv6_ra_pkt)
-    pkt.serialize()
+    pkt = build_pkt_header(vid, eth_src, eth_dst, ether.ETH_TYPE_IPV6)
+    pkt.ipv6_src = src_ip
+    pkt.ipv6_dst = dst_ip
+    pkt.ip_proto = inet.IPPROTO_ICMPV6
+    pkt.hop_limit = IPV6_MAX_HOP_LIM
+    pkt.icmpv6_type = icmpv6.ND_ROUTER_ADVERT
+    options = b''.join(
+        _ra_pio_encode(network=vip.network, 
+                       flags=pi_flags << 5, 
+                       valid_lifetime=86400, 
+                       preferred_lifetime=14400)
+        for vip in vips)
+    options += _ra_sll_encode(sll=eth_src)
+    pkt.payload = _ra_encode(cur_hop_limit=IPV6_MAX_HOP_LIM, 
+                             flags=0, 
+                             router_lifetime=1800,
+                             reachable_time=0, 
+                             retrans_timer=0, 
+                             options=options)
     return pkt
+
+
+def _ra_encode(*, cur_hop_limit, flags, router_lifetime, reachable_time, retrans_timer, options):
+    """Return byte string encoding a Router Advertisement.
+
+    Reference: https://tools.ietf.org/html/rfc4861#section-4.2
+    """
+    return struct.pack('!BBHLL', cur_hop_limit, flags, router_lifetime, 
+                       reachable_time, retrans_timer) + options
+
+
+def _ra_pio_encode(*, network, flags, valid_lifetime, preferred_lifetime):
+    """Return byte string encoding a Prefix Information Option.
+
+    Reference: https://tools.ietf.org/html/rfc4861#section-4.6.2
+    """
+    assert isinstance(network, ipaddress.IPv6Network)
+    return struct.pack('!BBBBLLL16s', 3, 4, network.prefixlen, flags, 
+                       valid_lifetime, preferred_lifetime, 0, 
+                       network.network_address.packed)
+
+
+def _ra_sll_encode(*, sll):
+    """Return byte string encoding a Source link-layer address option.
+
+    Reference: https://tools.ietf.org/html/rfc4861#section-4.6.1
+    """
+    data = bytes.fromhex(sll.replace(':', ''))
+    assert len(data) == 6
+    return struct.pack('!BB6s', 1, 1, data)

@@ -23,13 +23,11 @@ import time
 
 from collections import namedtuple
 
-from ryu.lib import mac
-from ryu.ofproto import ether
-from ryu.ofproto import ofproto_v1_3 as ofp
-from ryu.ofproto import ofproto_v1_3_parser as parser
+from zof.pktview import pktview_from_list
+from zof_constant import mac, ether, ofp
 
 try:
-    import tfm_pipeline
+    #import tfm_pipeline
     import valve_acl
     import valve_flood
     import valve_host
@@ -38,7 +36,7 @@ try:
     import valve_route
     import valve_util
 except ImportError:
-    from faucet import tfm_pipeline
+    #from faucet import tfm_pipeline
     from faucet import valve_acl
     from faucet import valve_flood
     from faucet import valve_host
@@ -83,21 +81,13 @@ class PacketMeta(object):
         self.eth_dst = eth_dst
 
     def reparse(self, max_len):
-        pkt, vlan_vid = valve_packet.parse_packet_in_pkt(
-            self.data, max_len)
-        if pkt is None or vlan_vid is None:
-            return
-        self.pkt = pkt
-        self.eth_pkt = valve_packet.parse_pkt(self.pkt)
+        pass
 
     def reparse_all(self):
         self.reparse(0)
 
     def reparse_ip(self, eth_type, payload=0):
-        ip_header = valve_packet.build_pkt_header(
-            1, mac.BROADCAST_STR, mac.BROADCAST_STR, eth_type)
-        ip_header.serialize()
-        self.reparse(len(ip_header.data) + payload)
+        pass
 
 
 class ValveLogger(object):
@@ -371,7 +361,7 @@ class Valve(object):
                 # same group_id multiple times in input_ofmsgs
                 new_group_id = True
                 for i, groupadd_ofmsg in enumerate(groupadd_ofmsgs):
-                    if groupadd_ofmsg.group_id == ofmsg.group_id:
+                    if groupadd_ofmsg['msg']['group_id'] == ofmsg['msg']['group_id']:
                         groupadd_ofmsgs[i] = ofmsg
                         new_group_id = False
                         break
@@ -944,8 +934,8 @@ class Valve(object):
             PacketMeta instance.
         """
         eth_pkt = valve_packet.parse_pkt(pkt)
-        eth_src = eth_pkt.src
-        eth_dst = eth_pkt.dst
+        eth_src = eth_pkt.eth_src
+        eth_dst = eth_pkt.eth_dst
         vlan = self.dp.vlans[vlan_vid]
         port = self.dp.ports[in_port]
         return PacketMeta(data, pkt, eth_pkt, port, vlan, eth_src, eth_dst)
@@ -1423,23 +1413,12 @@ class Valve(object):
 
     def flow_timeout(self, table_id, match):
         ofmsgs = []
-        match_oxm_fields = match.to_jsondict()['OFPMatch']['oxm_fields']
         if table_id == self.dp.eth_src_table or table_id == self.dp.eth_dst_table:
-            in_port = None
-            eth_src = None
-            eth_dst = None
-            vid = None
-            for field in match_oxm_fields:
-                if isinstance(field, dict):
-                    value = field['OXMTlv']
-                    if value['field'] == 'eth_src':
-                        eth_src = value['value']
-                    if value['field'] == 'eth_dst':
-                        eth_dst = value['value']
-                    if value['field'] == 'vlan_vid':
-                        vid = value['value'] & ~ofp.OFPVID_PRESENT
-                    if value['field'] == 'in_port':
-                        in_port = value['value']
+            fields = pktview_from_list(match)
+            eth_src = fields('eth_src')
+            eth_dst = fields('eth_dst')
+            vid = fields('vlan_vid', default=0) & ~ofp.OFPVID_PRESENT
+            in_port = fields('in_port')
             if eth_src and vid and in_port:
                 vlan = self.dp.vlans[vid]
                 ofmsgs.extend(
@@ -1453,7 +1432,7 @@ class Valve(object):
 class TfmValve(Valve):
     """Valve implementation that uses OpenFlow send table features messages."""
 
-    PIPELINE_CONF = 'tfm_pipeline.json'
+    PIPELINE_CONF = 'tfm_pipeline.yaml'
     SKIP_VALIDATION_TABLES = ()
 
     def _verify_pipeline_config(self, tfm):
@@ -1475,12 +1454,14 @@ class TfmValve(Valve):
                             tfm_matches, pipeline_matches))
 
     def switch_features(self, dp_id, msg):
-        ryu_table_loader = tfm_pipeline.LoadRyuTables(
-            self.dp.pipeline_config_dir, self.PIPELINE_CONF)
+        import os
+        pipeline_config = os.path.join(self.dp.pipeline_config_dir, self.PIPELINE_CONF)
+        with open(pipeline_config) as afile:
+            tfm = afile.read()
         self.logger.info('loading pipeline configuration')
         ofmsgs = self._delete_all_valve_flows()
-        tfm = valve_of.table_features(ryu_table_loader.load_tables())
-        self._verify_pipeline_config(tfm)
+        # Ignore consistency check...
+        #self._verify_pipeline_config(tfm)
         ofmsgs.append(tfm)
         return ofmsgs
 
@@ -1488,5 +1469,5 @@ class TfmValve(Valve):
 class ArubaValve(TfmValve):
     """Valve implementation that uses OpenFlow send table features messages."""
 
-    PIPELINE_CONF = 'aruba_pipeline.json'
+    PIPELINE_CONF = 'aruba_pipeline.yaml'
     DEC_TTL = False
