@@ -18,13 +18,14 @@
 # limitations under the License.
 
 import ipaddress
+import struct
 
-import dpkt
-from ryu.lib.packet import arp, bpdu, ethernet, icmp, icmpv6, ipv4, ipv6, slow, stream_parser, packet, vlan
+#from ryu.lib.packet import arp, bpdu, ethernet, icmp, icmpv6, ipv4, ipv6, slow, stream_parser, packet, vlan
 
 from faucet.valve_util import btos
-from faucet import valve_of
 
+from zof.pktview import make_pktview
+from faucet.zof_constant import ether, mac, arp, inet, icmp, icmpv6, ofp, slow, bpdu, ipv4, ipv6
 
 SLOW_PROTOCOL_MULTICAST = slow.SLOW_PROTOCOL_MULTICAST
 ETH_VLAN_HEADER_SIZE = 14 + 4
@@ -52,18 +53,7 @@ def parse_eth_pkt(pkt):
     Returns:
         ryu.lib.packet.ethernet: Ethernet packet.
     """
-    return pkt.get_protocol(ethernet.ethernet)
-
-
-def parse_vlan_pkt(pkt):
-    """Return parsed VLAN header.
-
-    Args:
-        pkt (ryu.lib.packet.packet): packet received from dataplane.
-    Returns:
-        ryu.lib.packet.vlan: VLAN header.
-    """
-    return pkt.get_protocol(vlan.vlan)
+    return pkt.get_protocol(ether.ether)
 
 
 def parse_lacp_pkt(pkt):
@@ -74,7 +64,7 @@ def parse_lacp_pkt(pkt):
     Returns:
         ryu.lib.packet.lacp: LACP packet.
     """
-    return pkt.get_protocol(slow.lacp)
+    return _lacp_slow_parse(pkt)
 
 
 def parse_packet_in_pkt(data, max_len):
@@ -88,31 +78,7 @@ def parse_packet_in_pkt(data, max_len):
         int: VLAN VID.
         int: Ethernet type of packet (inside VLAN)
     """
-    pkt = None
-    eth_pkt = None
-    vlan_vid = None
-    eth_type = None
-
-    if max_len:
-        data = data[:max_len]
-
-    try:
-        pkt = packet.Packet(data)
-        eth_pkt = parse_eth_pkt(pkt)
-        eth_type = eth_pkt.ethertype
-        # Packet ins, can only come when a VLAN header has already been pushed
-        # (ie. when we have progressed past the VLAN table). This gaurantees
-        # a VLAN header will always be present, so we know which VLAN the packet
-        # belongs to.
-        if eth_type == valve_of.ether.ETH_TYPE_8021Q:
-            vlan_pkt = parse_vlan_pkt(pkt)
-            if vlan_pkt:
-                vlan_vid = vlan_pkt.vid
-                eth_type = vlan_pkt.ethertype
-    except (AssertionError, stream_parser.StreamParser.TooSmallException):
-        pass
-
-    return (pkt, eth_pkt, vlan_vid, eth_type)
+    raise NotImplementedError
 
 
 def mac_addr_is_unicast(mac_addr):
@@ -138,17 +104,9 @@ def build_pkt_header(vid, eth_src, eth_dst, dl_type):
     Returns:
         ryu.lib.packet.ethernet: Ethernet packet with header.
     """
-    pkt_header = packet.Packet()
-    if vid is None:
-        eth_header = ethernet.ethernet(
-            eth_dst, eth_src, dl_type)
-        pkt_header.add_protocol(eth_header)
-    else:
-        eth_header = ethernet.ethernet(
-            eth_dst, eth_src, valve_of.ether.ETH_TYPE_8021Q)
-        pkt_header.add_protocol(eth_header)
-        vlan_header = vlan.vlan(vid=vid, ethertype=dl_type)
-        pkt_header.add_protocol(vlan_header)
+    pkt_header = make_pktview(eth_dst=eth_dst, eth_src=eth_src, eth_type=dl_type)
+    if vid is not None:
+        pkt_header.vlan_vid = vid | ofp.OFPVID_PRESENT
     return pkt_header
 
 
@@ -188,8 +146,8 @@ def lacp_reqreply(eth_src,
         ryu.lib.packet.ethernet: Ethernet packet with header.
     """
     pkt = build_pkt_header(
-        None, eth_src, slow.SLOW_PROTOCOL_MULTICAST, valve_of.ether.ETH_TYPE_SLOW)
-    lacp_pkt = slow.lacp(
+        None, eth_src, slow.SLOW_PROTOCOL_MULTICAST, ether.ETH_TYPE_SLOW)
+    pkt.payload = _lacp(
         version=1,
         actor_system=actor_system,
         actor_port=actor_port,
@@ -217,9 +175,97 @@ def lacp_reqreply(eth_src,
         partner_state_synchronization=partner_state_synchronization,
         actor_state_activity=0,
         partner_state_activity=partner_state_activity)
-    pkt.add_protocol(lacp_pkt)
-    pkt.serialize()
     return pkt
+
+
+def _lacp(*, 
+        version, 
+        actor_system,
+        actor_port,
+        partner_system,
+        partner_port,
+        actor_key,
+        partner_key,
+        actor_system_priority,
+        partner_system_priority,
+        actor_port_priority,
+        partner_port_priority,
+        actor_state_defaulted,
+        partner_state_defaulted,
+        actor_state_expired,
+        partner_state_expired,
+        actor_state_timeout,
+        partner_state_timeout,
+        actor_state_collecting,
+        partner_state_collecting,
+        actor_state_distributing,
+        partner_state_distributing,
+        actor_state_aggregation,
+        partner_state_aggregation,
+        actor_state_synchronization,
+        partner_state_synchronization,
+        actor_state_activity,
+        partner_state_activity):
+    """Helper function to construct LACP payload.
+    """
+    actor_state = _lacp_state(
+        actor_state_defaulted, 
+        actor_state_expired, 
+        actor_state_timeout, 
+        actor_state_collecting, 
+        actor_state_distributing,
+        actor_state_aggregation, 
+        actor_state_synchronization, 
+        actor_state_activity)
+    partner_state = _lacp_state(
+        partner_state_defaulted, 
+        partner_state_expired, 
+        partner_state_timeout, 
+        partner_state_collecting, 
+        partner_state_distributing,
+        partner_state_aggregation, 
+        partner_state_synchronization, 
+        partner_state_activity)
+    payload = _lacp_header()
+    payload += _lacp_peer_info(
+        tlv_type=1,     # actor
+        system_priority=actor_system_priority,
+        system=actor_system,
+        key=actor_key,
+        port_priority=actor_port_priority,
+        port=actor_port,
+        state=actor_state)
+    payload += _lacp_peer_info(
+        tlv_type=2,     # partner
+        system_priority=partner_system_priority,
+        system=partner_system,
+        key=partner_key,
+        port_priority=partner_port_priority,
+        port=partner_port,
+        state=partner_state)
+    payload += _lacp_collector_info_terminator(max_delay=0)
+    return payload
+
+
+def _lacp_state(defaulted, expired, timeout, collecting, distributing, aggregation, synchronization, activity):
+    state = 0
+    if defaulted:
+        state |= LACP_DFLT
+    if expired:
+        state |= LACP_EXPR
+    if timeout:
+        state |= LACP_TMO
+    if collecting:
+        state |= LACP_CLCT
+    if distributing:
+        state |= LACP_DIST
+    if aggregation:
+        state |= LACP_AGGR
+    if synchronization:
+        state |= LACP_SYNC
+    if activity:
+        state |= LACP_ACT
+    return state
 
 
 def arp_request(vid, eth_src, src_ip, dst_ip):
@@ -233,13 +279,12 @@ def arp_request(vid, eth_src, src_ip, dst_ip):
     Returns:
         ryu.lib.packet.arp: serialized ARP request packet.
     """
-    pkt = build_pkt_header(
-        vid, eth_src, valve_of.mac.BROADCAST_STR, valve_of.ether.ETH_TYPE_ARP)
-    arp_pkt = arp.arp(
-        opcode=arp.ARP_REQUEST, src_mac=eth_src,
-        src_ip=str(src_ip), dst_mac=valve_of.mac.DONTCARE_STR, dst_ip=str(dst_ip))
-    pkt.add_protocol(arp_pkt)
-    pkt.serialize()
+    pkt = build_pkt_header(vid, eth_src, mac.BROADCAST_STR, ether.ETH_TYPE_ARP)
+    pkt.arp_op = arp.ARP_REQUEST
+    pkt.arp_sha = eth_src
+    pkt.arp_tha = mac.DONTCARE_STR
+    pkt.arp_spa = src_ip
+    pkt.arp_tpa = dst_ip
     return pkt
 
 
@@ -255,12 +300,12 @@ def arp_reply(vid, eth_src, eth_dst, src_ip, dst_ip):
     Returns:
         ryu.lib.packet.arp: serialized ARP reply packet.
     """
-    pkt = build_pkt_header(vid, eth_src, eth_dst, valve_of.ether.ETH_TYPE_ARP)
-    arp_pkt = arp.arp(
-        opcode=arp.ARP_REPLY, src_mac=eth_src,
-        src_ip=src_ip, dst_mac=eth_dst, dst_ip=dst_ip)
-    pkt.add_protocol(arp_pkt)
-    pkt.serialize()
+    pkt = build_pkt_header(vid, eth_src, eth_dst, ether.ETH_TYPE_ARP)
+    pkt.arp_op = arp.ARP_REPLY
+    pkt.arp_sha = eth_src
+    pkt.arp_tha = eth_dst
+    pkt.arp_spa = src_ip
+    pkt.arp_tpa = dst_ip
     return pkt
 
 
@@ -276,15 +321,13 @@ def echo_reply(vid, eth_src, eth_dst, src_ip, dst_ip, data):
     Returns:
         ryu.lib.packet.icmp: serialized ICMP echo reply packet.
     """
-    pkt = build_pkt_header(vid, eth_src, eth_dst, valve_of.ether.ETH_TYPE_IP)
-    ipv4_pkt = ipv4.ipv4(
-        dst=dst_ip, src=src_ip, proto=valve_of.inet.IPPROTO_ICMP)
-    pkt.add_protocol(ipv4_pkt)
-    icmp_pkt = icmp.icmp(
-        type_=icmp.ICMP_ECHO_REPLY, code=icmp.ICMP_ECHO_REPLY_CODE,
-        data=data)
-    pkt.add_protocol(icmp_pkt)
-    pkt.serialize()
+    pkt = build_pkt_header(vid, eth_src, eth_dst, ether.ETH_TYPE_IP)
+    pkt.ip_proto = inet.IPPROTO_ICMP
+    pkt.ipv4_src = src_ip
+    pkt.ipv4_dst = dst_ip
+    pkt.icmpv4_type = icmp.ICMP_ECHO_REPLY
+    pkt.icmpv4_code = icmp.ICMP_ECHO_CODE
+    pkt.payload = data
     return pkt
 
 
@@ -338,17 +381,14 @@ def nd_request(vid, eth_src, src_ip, dst_ip):
     """
     nd_mac = ipv6_link_eth_mcast(dst_ip)
     ip_gw_mcast = ipv6_solicited_node_from_ucast(dst_ip)
-    pkt = build_pkt_header(vid, eth_src, nd_mac, valve_of.ether.ETH_TYPE_IPV6)
-    ipv6_pkt = ipv6.ipv6(
-        src=str(src_ip), dst=ip_gw_mcast, nxt=valve_of.inet.IPPROTO_ICMPV6)
-    pkt.add_protocol(ipv6_pkt)
-    icmpv6_pkt = icmpv6.icmpv6(
-        type_=icmpv6.ND_NEIGHBOR_SOLICIT,
-        data=icmpv6.nd_neighbor(
-            dst=dst_ip,
-            option=icmpv6.nd_option_sla(hw_src=eth_src)))
-    pkt.add_protocol(icmpv6_pkt)
-    pkt.serialize()
+    pkt = build_pkt_header(vid, eth_src, nd_mac, ether.ETH_TYPE_IPV6)
+    pkt.ipv6_src = src_ip
+    pkt.ipv6_dst = ip_gw_mcast
+    pkt.ip_proto = inet.IPPROTO_ICMPV6
+    pkt.hop_limit = IPV6_MAX_HOP_LIM
+    pkt.icmpv6_type = icmpv6.ND_NEIGHBOR_SOLICIT
+    pkt.ipv6_nd_target = dst_ip
+    pkt.ipv6_nd_sll = eth_src
     return pkt
 
 
@@ -364,26 +404,19 @@ def nd_advert(vid, eth_src, eth_dst, src_ip, dst_ip):
     Returns:
         ryu.lib.packet.ethernet: Serialized IPv6 neighbor discovery packet.
     """
-    pkt = build_pkt_header(
-        vid, eth_src, eth_dst, valve_of.ether.ETH_TYPE_IPV6)
-    ipv6_icmp6 = ipv6.ipv6(
-        src=src_ip,
-        dst=dst_ip,
-        nxt=valve_of.inet.IPPROTO_ICMPV6,
-        hop_limit=IPV6_MAX_HOP_LIM)
-    pkt.add_protocol(ipv6_icmp6)
-    icmpv6_nd_advert = icmpv6.icmpv6(
-        type_=icmpv6.ND_NEIGHBOR_ADVERT,
-        data=icmpv6.nd_neighbor(
-            dst=src_ip,
-            option=icmpv6.nd_option_tla(hw_src=eth_src), res=7))
-    pkt.add_protocol(icmpv6_nd_advert)
-    pkt.serialize()
+    pkt = build_pkt_header(vid, eth_src, eth_dst, ether.ETH_TYPE_IPV6)
+    pkt.ipv6_src = src_ip
+    pkt.ipv6_dst = dst_ip
+    pkt.ip_proto = inet.IPPROTO_ICMPV6
+    pkt.hop_limit = IPV6_MAX_HOP_LIM
+    pkt.icmpv6_type = icmpv6.ND_NEIGHBOR_ADVERT
+    pkt.ipv6_nd_target = src_ip
+    pkt.ipv6_nd_tll = eth_src
+    pkt.ipv6_nd_res = (7 << 29)
     return pkt
 
 
-def icmpv6_echo_reply(vid, eth_src, eth_dst, src_ip, dst_ip, hop_limit,
-                      id_, seq, data):
+def icmpv6_echo_reply(vid, eth_src, eth_dst, src_ip, dst_ip, hop_limit, data):
     """Return IPv6 ICMP echo reply packet.
 
     Args:
@@ -399,19 +432,14 @@ def icmpv6_echo_reply(vid, eth_src, eth_dst, src_ip, dst_ip, hop_limit,
     Returns:
         ryu.lib.packet.ethernet: Serialized IPv6 ICMP echo reply packet.
     """
-    pkt = build_pkt_header(
-        vid, eth_src, eth_dst, valve_of.ether.ETH_TYPE_IPV6)
-    ipv6_reply = ipv6.ipv6(
-        src=src_ip,
-        dst=dst_ip,
-        nxt=valve_of.inet.IPPROTO_ICMPV6,
-        hop_limit=hop_limit)
-    pkt.add_protocol(ipv6_reply)
-    icmpv6_reply = icmpv6.icmpv6(
-        type_=icmpv6.ICMPV6_ECHO_REPLY,
-        data=icmpv6.echo(id_=id_, seq=seq, data=data))
-    pkt.add_protocol(icmpv6_reply)
-    pkt.serialize()
+    pkt = build_pkt_header(vid, eth_src, eth_dst, ether.ETH_TYPE_IPV6)
+    pkt.ipv6_src = src_ip
+    pkt.ipv6_dst = dst_ip
+    pkt.ip_proto = inet.IPPROTO_ICMPV6
+    pkt.hop_limit = hop_limit
+    pkt.icmpv6_type = icmpv6.ICMPV6_ECHO_REPLY
+    # N.B. we assume data already contains the id_ and seq.
+    pkt.payload = data
     return pkt
 
 
@@ -430,52 +458,35 @@ def router_advert(_vlan, vid, eth_src, eth_dst, src_ip, dst_ip,
     Returns:
         ryu.lib.packet.ethernet: Serialized IPv6 ICMP RA packet.
     """
-    pkt = build_pkt_header(
-        vid, eth_src, eth_dst, valve_of.ether.ETH_TYPE_IPV6)
-    ipv6_pkt = ipv6.ipv6(
-        src=src_ip,
-        dst=dst_ip,
-        nxt=valve_of.inet.IPPROTO_ICMPV6,
-        hop_limit=IPV6_MAX_HOP_LIM)
-    pkt.add_protocol(ipv6_pkt)
-    options = []
-    for vip in vips:
-        options.append(
-            icmpv6.nd_option_pi(
-                prefix=vip.network.network_address,
-                pl=vip.network.prefixlen,
-                res1=pi_flags,
-                val_l=86400,
-                pre_l=14400,
-            ))
-    options.append(icmpv6.nd_option_sla(hw_src=eth_src))
-    # https://tools.ietf.org/html/rfc4861#section-4.6.2
-    icmpv6_ra_pkt = icmpv6.icmpv6(
-        type_=icmpv6.ND_ROUTER_ADVERT,
-        data=icmpv6.nd_router_advert(
-            rou_l=1800,
-            ch_l=IPV6_MAX_HOP_LIM,
-            options=options))
-    pkt.add_protocol(icmpv6_ra_pkt)
-    pkt.serialize()
+    pkt = build_pkt_header(vid, eth_src, eth_dst, ether.ETH_TYPE_IPV6)
+    pkt.ipv6_src = src_ip
+    pkt.ipv6_dst = dst_ip
+    pkt.ip_proto = inet.IPPROTO_ICMPV6
+    pkt.hop_limit = IPV6_MAX_HOP_LIM
+    pkt.icmpv6_type = icmpv6.ND_ROUTER_ADVERT
+    options = b''.join(
+        _ra_pio_encode(network=vip.network, 
+                       flags=pi_flags << 5, 
+                       valid_lifetime=86400, 
+                       preferred_lifetime=14400)
+        for vip in vips)
+    options += _ra_sll_encode(sll=eth_src)
+    pkt.payload = _ra_encode(cur_hop_limit=IPV6_MAX_HOP_LIM, 
+                             flags=0, 
+                             router_lifetime=1800,
+                             reachable_time=0, 
+                             retrans_timer=0, 
+                             options=options)
     return pkt
-
-
-def ip_header_size(eth_type):
-    """Return size of a packet header with specified ether type."""
-    ip_header = build_pkt_header(
-        1, valve_of.mac.BROADCAST_STR, valve_of.mac.BROADCAST_STR, eth_type)
-    ip_header.serialize()
-    return len(ip_header.data)
 
 
 class PacketMeta(object):
     """Original, and parsed Ethernet packet metadata."""
 
     ETH_TYPES_PARSERS = {
-        valve_of.ether.ETH_TYPE_IP: ipv4.ipv4,
-        valve_of.ether.ETH_TYPE_ARP: arp.arp,
-        valve_of.ether.ETH_TYPE_IPV6: ipv6.ipv6,
+        ether.ETH_TYPE_IP: ipv4.ipv4,
+        ether.ETH_TYPE_ARP: arp.arp,
+        ether.ETH_TYPE_IPV6: ipv6.ipv6,
     }
 
     def __init__(self, data, orig_len, pkt, eth_pkt, port, valve_vlan, eth_src, eth_dst, eth_type):
@@ -493,39 +504,138 @@ class PacketMeta(object):
 
     def reparse(self, max_len):
         """Reparse packet using data up to the specified maximum length."""
-        pkt, eth_pkt, vlan_vid, eth_type = parse_packet_in_pkt(
-            self.data, max_len)
-        if pkt is None or vlan_vid is None or eth_type is None:
-            return
-        self.pkt = pkt
-        self.eth_pkt = eth_pkt
+        pass
 
     def reparse_all(self):
         """Reparse packet with all available data."""
-        self.reparse(0)
-
-    def isfragment(self):
-        """Return True if a fragment."""
-        dpkt_ip = dpkt.ethernet.Ethernet(self.data)
-        if isinstance(dpkt_ip.data, dpkt.ip.IP):
-            if bool(dpkt_ip.data.off & dpkt.ip.IP_MF) or dpkt_ip.data.off & dpkt.ip.IP_OFFMASK:
-                return True
-        return False
+        pass
 
     def reparse_ip(self, eth_type, payload=0):
         """Reparse packet with specified IP header type and optionally payload."""
-        # Ryu blows up on fragments
-        if self.isfragment():
-            return
-        self.reparse(ip_header_size(eth_type) + payload)
         if self.eth_type in self.ETH_TYPES_PARSERS:
             self.l3_pkt = self.pkt.get_protocol(self.ETH_TYPES_PARSERS[self.eth_type])
             if self.l3_pkt:
-                if hasattr(self.l3_pkt, 'src_ip'):
-                    self.l3_src = self.l3_pkt.src_ip
-                elif hasattr(self.l3_pkt, 'src'):
-                    self.l3_src = self.l3_pkt.src
+                if hasattr(self.l3_pkt, 'arp_spa'):
+                    self.l3_src = self.l3_pkt.arp_spa
+                elif hasattr(self.l3_pkt, 'ipv4_src'):
+                    self.l3_src = self.l3_pkt.ipv4_src
+                elif hasattr(self.l3_pkt, 'ipv6_src'):
+                    self.l3_src = self.l3_pkt.ipv6_src
 
     def packet_complete(self):
         """True if we have the complete packet."""
         return len(self.data) == self.orig_len
+
+
+def _ra_encode(*, cur_hop_limit, flags, router_lifetime, reachable_time, retrans_timer, options):
+    """Return byte string encoding a Router Advertisement.
+
+    Reference: https://tools.ietf.org/html/rfc4861#section-4.2
+    """
+    return struct.pack('!BBHLL', cur_hop_limit, flags, router_lifetime, 
+                       reachable_time, retrans_timer) + options
+
+
+def _ra_pio_encode(*, network, flags, valid_lifetime, preferred_lifetime):
+    """Return byte string encoding a Prefix Information Option.
+
+    Reference: https://tools.ietf.org/html/rfc4861#section-4.6.2
+    """
+    assert isinstance(network, ipaddress.IPv6Network)
+    return struct.pack('!BBBBLLL16s', 3, 4, network.prefixlen, flags, 
+                       valid_lifetime, preferred_lifetime, 0, 
+                       network.network_address.packed)
+
+
+def _ra_sll_encode(*, sll):
+    """Return byte string encoding a Source link-layer address option.
+
+    Reference: https://tools.ietf.org/html/rfc4861#section-4.6.1
+    """
+    data = bytes.fromhex(sll.replace(':', ''))
+    assert len(data) == 6
+    return struct.pack('!BB6s', 1, 1, data)
+
+
+LACP_ACT = 0x01
+LACP_TMO = 0x02
+LACP_AGGR = 0x04
+LACP_SYNC = 0x08
+LACP_CLCT = 0x10
+LACP_DIST = 0x20
+LACP_DFLT = 0x40
+LACP_EXPR = 0x80
+
+
+def _lacp_header():
+    return struct.pack('!BB', 1, 1)
+
+
+def _lacp_peer_info(*, tlv_type, system_priority, system, key, port_priority, port, state):
+    """Return byte string encoding a TLV section for LACP actor/partner .
+
+    Reference: IEEE Std 802.1AX-2008 (Section 5.4.2)
+    """
+    if isinstance(system, str):
+        system = bytes.fromhex(system.replace(':', ''))
+    assert len(system) == 6
+    return struct.pack('!BBH6sHHHB3x', tlv_type, 20, system_priority, system, 
+                       key, port_priority, port, state)
+
+
+def _lacp_collector_info_terminator(*, max_delay):
+    return struct.pack('!BBH64x', 3, 16, max_delay)
+
+
+def _lacp_slow_parse(pkt):
+    if pkt.eth_type != ether.ETH_TYPE_SLOW:
+        raise ValueError('invalid eth_type: %r' % pkt.eth_type)
+
+    data = pkt.payload
+    offset = 0
+    # Check header prefix.
+    if data[0:2] != b'\x01\x01':
+        raise ValueError('invalid lacp header prefix')
+    offset += 2
+
+    (tlv_type, tlv_len, pkt.actor_system_priority, pkt.actor_system, 
+     pkt.actor_key, pkt.actor_port_priority, pkt.actor_port, 
+     pkt.actor_state) = struct.unpack_from('!BBH6sHHHB3x', data, offset)
+    if tlv_type != 1 and tlv_len != 20:
+        raise ValueError('invalid lacp actor info')
+    offset += 20
+
+    (tlv_type, tlv_len, pkt.partner_system_priority, pkt.partner_system, 
+     pkt.partner_key, pkt.partner_port_priority, pkt.partner_port, 
+     pkt.partner_state) = struct.unpack_from('!BBH6sHHHB3x', data, offset)
+    if tlv_type != 2 and tlv_len != 20:
+        raise ValueError('invalid lacp partner info')
+    offset += 20
+
+    tlv_type, tlv_len, pkt.collector_max_delay = struct.unpack_from('!BBH12x', data, offset)
+    if tlv_type != 3 and tlv_len != 16:
+        raise ValueError('invalid lacp collector info')
+    offset += 16
+
+    tlv_type, tlv_len = struct.unpack_from('!BB', data, offset)
+    if tlv_type != 0 and tlv_len != 0:
+        raise ValueError('invalid lacp termination')
+
+    # The remaining 50 reserved octets are ignored on receipt.
+
+    # Break out the individual actor_state bits. Don't bother with the partner
+    # state bits because they aren't used.
+    actor_state = pkt.actor_state
+    pkt.actor_state_activity = (actor_state & LACP_ACT) != 0
+    pkt.actor_state_timeout = (actor_state & LACP_TMO) != 0
+    pkt.actor_state_aggregation = (actor_state & LACP_AGGR) != 0
+    pkt.actor_state_synchronization = (actor_state & LACP_SYNC) != 0
+    pkt.actor_state_collecting = (actor_state & LACP_CLCT) != 0
+    pkt.actor_state_distributing = (actor_state & LACP_DIST) != 0
+    pkt.actor_state_defaulted = (actor_state & LACP_DFLT) != 0
+    pkt.actor_state_expired = (actor_state & LACP_EXPR) != 0
+
+    # The actor_system and partner_system are left encoded as bytes. They
+    # could be translated to a string representing the MAC address.
+    del pkt['payload']
+    return pkt
