@@ -65,14 +65,14 @@ class GaugePortStatsPrometheusPoller(GaugePortStatsPoller):
         formatted_port_stats = []
         for prom_var in PROM_PORT_VARS:
             stat_name = delim.join((PROM_PORT_PREFIX, prom_var))
-            stat_val = getattr(stat, prom_var)
+            stat_val = stat[prom_var]
             if stat_val != 2**64-1:
                 formatted_port_stats.append((stat_name, stat_val))
         return formatted_port_stats
 
     def update(self, rcv_time, dp_id, msg):
         super(GaugePortStatsPrometheusPoller, self).update(rcv_time, dp_id, msg)
-        for stat in msg.body:
+        for stat in msg:
             port_name = self._stat_port_name(msg, stat, dp_id)
             port_labels = dict(dp_id=hex(dp_id), dp_name=self.dp.name, port_name=port_name)
             for stat_name, stat_val in self._format_port_stats(

@@ -105,8 +105,9 @@ Example:
 
     def update(self, rcv_time, dp_id, msg):
         super(GaugePortStateInfluxDBLogger, self).update(rcv_time, dp_id, msg)
-        reason = msg.reason
-        port_no = msg.desc.port_no
+        _reason_map = {'ADD': 0, 'DELETE': 1, 'MODIFY': 2}
+        reason = _reason_map.get(msg['reason'], msg['reason'])
+        port_no = msg['port_no']
         if port_no in self.dp.ports:
             port_name = self.dp.ports[port_no].name
             points = [
@@ -156,7 +157,7 @@ Example:
     def update(self, rcv_time, dp_id, msg):
         super(GaugePortStatsInfluxDBLogger, self).update(rcv_time, dp_id, msg)
         points = []
-        for stat in msg.body:
+        for stat in msg:
             port_name = self._stat_port_name(msg, stat, dp_id)
             for stat_name, stat_val in self._format_port_stats('_', stat):
                 points.append(
@@ -198,9 +199,7 @@ Example:
     def update(self, rcv_time, dp_id, msg):
         super(GaugeFlowTableInfluxDBLogger, self).update(rcv_time, dp_id, msg)
         points = []
-        jsondict = msg.to_jsondict()
-        for stats_reply in jsondict['OFPFlowStatsReply']['body']:
-            stats = stats_reply['OFPFlowStats']
+        for stats in msg:
             for var, tags, count in self._parse_flow_stats(stats):
                 points.append(self.make_point(tags, rcv_time, var, count))
         self.ship_points(points)
