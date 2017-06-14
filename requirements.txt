@@ -2,8 +2,9 @@ couchdb
 datadiff
 influxdb
 ipaddress
+netaddr
 networkx
 pbr>=1.9
 prometheus_client
 pyyaml
-ryu==4.20
+zof

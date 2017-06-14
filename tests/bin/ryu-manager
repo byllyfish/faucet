@@ -1,0 +1,36 @@
+#!/bin/bash
+
+
+if [ $1 = "--version" ]; then 
+  echo 'ryu-manager 4.9'
+  exit 0
+fi
+
+log() {
+  echo "$@" >> /tmp/ryu-manager.log
+}
+
+log "ryu-manager $@"
+
+MODULE=zof_faucet
+EXTRA=""
+
+while true; do
+  case $1 in 
+    --*)
+      break
+      ;;
+    faucet.gauge)
+      MODULE=zof_gauge
+      ;;
+    test_experimental_api.py)
+      EXTRA="--x-modules=zof_test_experimental_api"
+      ;;
+    *)
+      log "ryu-manager: ignore $1"
+      ;;
+  esac
+  shift
+done
+
+exec python3 -m faucet.$MODULE "$@" $EXTRA
