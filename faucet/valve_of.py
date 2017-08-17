@@ -100,7 +100,7 @@ def is_groupadd(ofmsg):
 
 
 def apply_meter(meter_id):
-    return {'instruction': 'METER', 'meter_id': meter_id }
+    return {'instruction': 'METER', 'meter_id': meter_id}
 
 
 def apply_actions(actions):
@@ -111,7 +111,7 @@ def apply_actions(actions):
     Returns:
         ryu.ofproto.ofproto_v1_3_parser.OFPInstruction: instruction of actions.
     """
-    return {'instruction': 'APPLY_ACTIONS', 'actions': actions }
+    return {'instruction': 'APPLY_ACTIONS', 'actions': actions}
 
 
 def goto_table(table_id):
@@ -122,7 +122,7 @@ def goto_table(table_id):
     Returns:
         ryu.ofproto.ofproto_v1_3_parser.OFPInstruction: goto instruction.
     """
-    return {'instruction': 'GOTO_TABLE', 'table_id': table_id }
+    return {'instruction': 'GOTO_TABLE', 'table_id': table_id}
 
 
 def set_eth_src(eth_src):

@@ -16,12 +16,12 @@ from valve import valve_factory
 from faucet_metrics import FaucetMetrics
 
 
-app = zof.Application('faucet', exception_fatal='faucet.exception')
-app.logname = 'faucet'
-app.config_file = None
-app.valves = None
-app.config_hashes = None
-app.metrics = FaucetMetrics(0, '')
+APP = zof.Application('faucet', exception_fatal='faucet.exception')
+APP.logname = 'faucet'
+APP.config_file = None
+APP.valves = None
+APP.config_hashes = None
+APP.metrics = FaucetMetrics(0, '')
 
 
 def to_dpid(dpid):
@@ -29,118 +29,118 @@ def to_dpid(dpid):
     return int(dpid.replace(':', ''), 16)
 
 def _load_configs(new_config_file):
-    app.config_file = new_config_file
-    app.config_hashes, new_dps = dp_parser(
-        new_config_file, app.logname)
+    APP.config_file = new_config_file
+    APP.config_hashes, new_dps = dp_parser(
+        new_config_file, APP.logname)
     if new_dps is None:
-        app.logger.error('new config bad - rejecting')
+        APP.logger.error('new config bad - rejecting')
         return
     deleted_valve_dpids = (
-        set(list(app.valves.keys())) -
+        set(list(APP.valves.keys())) -
         set([valve.dp_id for valve in new_dps]))
     for new_dp in new_dps:
         dp_id = new_dp.dp_id
-        if dp_id in app.valves:
-            valve = app.valves[dp_id]
+        if dp_id in APP.valves:
+            valve = APP.valves[dp_id]
             cold_start, flowmods = valve.reload_config(new_dp)
             # pylint: disable=no-member
             if flowmods:
                 _send_flow_msgs(new_dp.dp_id, flowmods)
                 if cold_start:
-                    app.metrics.faucet_config_reload_cold.labels(
+                    APP.metrics.faucet_config_reload_cold.labels(
                         dpid=hex(dp_id)).inc()
                 else:
-                    app.metrics.faucet_config_reload_warm.labels(
+                    APP.metrics.faucet_config_reload_warm.labels(
                         dpid=hex(dp_id)).inc()
         else:
             # pylint: disable=no-member
             valve_cl = valve_factory(new_dp)
             if valve_cl is None:
-                app.logger.fatal('Could not configure %s', new_dp.name)
+                APP.logger.fatal('Could not configure %s', new_dp.name)
             else:
-                valve = valve_cl(new_dp, app.logname)
-                app.valves[dp_id] = valve
-            app.logger.info('Add new datapath %s', dpid_log(dp_id))
-        valve.update_config_metrics(app.metrics)
+                valve = valve_cl(new_dp, APP.logname)
+                APP.valves[dp_id] = valve
+            APP.logger.info('Add new datapath %s', dpid_log(dp_id))
+        valve.update_config_metrics(APP.metrics)
     for deleted_valve_dpid in deleted_valve_dpids:
-        app.logger.info(
+        APP.logger.info(
             'Deleting de-configured %s', dpid_log(deleted_valve_dpid))
-        del app.valves[deleted_valve_dpid]
+        del APP.valves[deleted_valve_dpid]
         zof_dp = zof.find_datapath(deleted_valve_dpid)
         if zof_dp:
             zof_dp.close()
-    #app._bgp.reset(self.valves, self.metrics)
+    #APP._bgp.reset(self.valves, self.metrics)
 
-@app.event('start')
+@APP.event('start')
 def start(_):
     sysprefix = get_sys_prefix()
-    app.config_file = os.getenv('FAUCET_CONFIG', sysprefix + '/etc/ryu/faucet/faucet.yaml')
+    APP.config_file = os.getenv('FAUCET_CONFIG', sysprefix + '/etc/ryu/faucet/faucet.yaml')
 
     logfile = os.getenv('FAUCET_LOG', sysprefix + '/var/log/ryu/faucet/faucet.log')
     exc_logfile = os.getenv('FAUCET_EXCEPTION_LOG', sysprefix + '/var/log/ryu/faucet/faucet_exception.log')
 
-    app.logger = get_logger(app.logname, logfile, 'DEBUG', 0)
-    get_logger('%s.exception' % app.logname, exc_logfile, 'DEBUG', 1)
+    APP.logger = get_logger(APP.logname, logfile, 'DEBUG', 0)
+    get_logger('%s.exception' % APP.logname, exc_logfile, 'DEBUG', 1)
 
     # Set up a valve object for each datapath
-    app.valves = {}
+    APP.valves = {}
     # Configure all Valves
-    _load_configs(app.config_file)
+    _load_configs(APP.config_file)
 
     zof.ensure_future(_periodic_task(_resolve_gateways, 2))
     zof.ensure_future(_periodic_task(_host_expire, 5))
     zof.ensure_future(_periodic_task(_advertise, 5))
 
 
-@app.message('channel_up')
+@APP.message('channel_up')
 def channel_up(event):
     dp_id = to_dpid(event.datapath_id)
-    if not dp_id in app.valves:
-        app.logger.error('Unknown datapath %s', dp_id)
+    if dp_id not in APP.valves:
+        APP.logger.error('Unknown datapath %s', dp_id)
         event.datapath.close()
         return    
 
-    app.metrics.of_dp_connections.labels(dpid=hex(dp_id)).inc()
+    APP.metrics.of_dp_connections.labels(dpid=hex(dp_id)).inc()
 
     up_port_nums = [port.port_no for port in event.datapath if port.up]
-    flowmods = app.valves[dp_id].datapath_connect(dp_id, up_port_nums)
+    flowmods = APP.valves[dp_id].datapath_connect(dp_id, up_port_nums)
     _send_flow_msgs(dp_id, flowmods)
 
-    app.metrics.dp_status.labels(dpid=hex(dp_id)).set(1)
+    APP.metrics.dp_status.labels(dpid=hex(dp_id)).set(1)
 
 
-@app.message('channel_down')
+@APP.message('channel_down')
 def channel_down(event):
     dp_id = to_dpid(event.datapath_id)
-    if not dp_id in app.valves:
-        app.logger.error('Unknown datapath %s', dp_id)
+    if dp_id not in APP.valves:
+        APP.logger.error('Unknown datapath %s', dp_id)
         return    
 
-    app.metrics.of_dp_disconnections.labels(dpid=hex(dp_id)).inc()
-    app.metrics.dp_status.labels(dpid=hex(dp_id)).set(0)
-    app.valves[dp_id].datapath_disconnect(dp_id)
+    APP.metrics.of_dp_disconnections.labels(dpid=hex(dp_id)).inc()
+    APP.metrics.dp_status.labels(dpid=hex(dp_id)).set(0)
+    APP.valves[dp_id].datapath_disconnect(dp_id)
 
 
-@app.message('features_reply')
+@APP.message('features_reply')
 def features_reply(event):
     dp_id = to_dpid(event.datapath_id)
-    if not dp_id in app.valves:
-        app.logger.error('Unknown datapath %s', dp_id)
+    if dp_id not in APP.valves:
+        APP.logger.error('Unknown datapath %s', dp_id)
         return
 
-    flowmods = app.valves[dp_id].switch_features(dp_id, event.msg)
+    flowmods = APP.valves[dp_id].switch_features(dp_id, event.msg)
     _send_flow_msgs(dp_id, flowmods)
 
-@app.message('packet_in')
+@APP.message('packet_in')
 def packet_in(event):
     dp_id = to_dpid(event.datapath_id)
-    if not dp_id in app.valves:
-        app.logger.error('Unknown datapath %s', dp_id)
+    if dp_id not in APP.valves:
+        APP.logger.error('Unknown datapath %s', dp_id)
         return
 
     msg = event.msg
 
-    valve = app.valves[dp_id]
+    valve = APP.valves[dp_id]
     valve.ofchannel_log([event])
 
     pkt = msg.pkt
@@ -149,62 +149,62 @@ def packet_in(event):
     try:
         vlan_vid = pkt.vlan_vid & 0x0fff
     except AttributeError:
-        app.logger.error('Missing VLAN header %r', pkt)
+        APP.logger.error('Missing VLAN header %r', pkt)
         return
 
     pkt_meta = valve.parse_rcv_packet(in_port, vlan_vid, msg.data, pkt)
 
-    app.metrics.of_packet_ins.labels(dpid=hex(dp_id)).inc()
-    flowmods = valve.rcv_packet(dp_id, app.valves, pkt_meta)
+    APP.metrics.of_packet_ins.labels(dpid=hex(dp_id)).inc()
+    flowmods = valve.rcv_packet(dp_id, APP.valves, pkt_meta)
     _send_flow_msgs(dp_id, flowmods)
-    valve.update_metrics(app.metrics)
+    valve.update_metrics(APP.metrics)
 
 
-@app.message('port_status')
+@APP.message('port_status')
 def port_status(event):
     dp_id = to_dpid(event.datapath_id)
-    if not dp_id in app.valves:
-        app.logger.warning('Unknown datapath %s', dp_id)
+    if dp_id not in APP.valves:
+        APP.logger.warning('Unknown datapath %s', dp_id)
         return
 
     msg = event.msg
     port_no = msg.port_no
     reason = msg.reason
     link_up = 'LINK_DOWN' not in msg.state
-    valve = app.valves[dp_id]
+    valve = APP.valves[dp_id]
 
     flowmods = valve.port_status_handler(dp_id, port_no, reason, link_up)
     _send_flow_msgs(dp_id, flowmods)
-    app.metrics.port_status.labels(dpid=hex(dp_id), port=port_no).set(link_up)
+    APP.metrics.port_status.labels(dpid=hex(dp_id), port=port_no).set(link_up)
 
 
-@app.message('error')
+@APP.message('error')
 def error(event):
     dp_id = to_dpid(event.datapath_id)
-    if not dp_id in app.valves:
-        app.logger.warning('Unknown datapath %s', dp_id)
+    if dp_id not in APP.valves:
+        APP.logger.warning('Unknown datapath %s', dp_id)
         return
 
     msg = event.msg
-    app.metrics.of_errors.labels(dpid=hex(dp_id)).inc()
-    app.valves[dp_id].ofchannel_log([msg])
-    app.logger.error('OFPErrorMsg: %r', msg)
+    APP.metrics.of_errors.labels(dpid=hex(dp_id)).inc()
+    APP.valves[dp_id].ofchannel_log([msg])
+    APP.logger.error('OFPErrorMsg: %r', msg)
 
-@app.event('signal', signal='SIGHUP')
+@APP.event('signal', signal='SIGHUP')
 def sig_hup(event):
-    app.logger.info('Signal event: %r', event)
+    APP.logger.info('Signal event: %r', event)
     # Don't exit because of this signal.
     event.exit = False
     # Reload configuration.
-    app.logger.info('request to reload configuration')
-    new_config_file = os.getenv('FAUCET_CONFIG', app.config_file)
-    if config_changed(app.config_file, new_config_file, app.config_hashes):
-        app.logger.info('configuration changed')
+    APP.logger.info('request to reload configuration')
+    new_config_file = os.getenv('FAUCET_CONFIG', APP.config_file)
+    if config_changed(APP.config_file, new_config_file, APP.config_hashes):
+        APP.logger.info('configuration changed')
         _load_configs(new_config_file)
     else:
-        app.logger.info('configuration is unchanged, not reloading')
+        APP.logger.info('configuration is unchanged, not reloading')
     # pylint: disable=no-member
-    app.metrics.faucet_config_reload_requests.inc()
+    APP.metrics.faucet_config_reload_requests.inc()
 
 
 async def _periodic_task(func, period, jitter=2):
@@ -214,36 +214,36 @@ async def _periodic_task(func, period, jitter=2):
 
 
 def _resolve_gateways():
-    for dp_id, valve in list(app.valves.items()):
+    for dp_id, valve in list(APP.valves.items()):
         flowmods = valve.resolve_gateways()
         if flowmods:
             _send_flow_msgs(dp_id, flowmods)
 
 
 def _host_expire():
-    for valve in list(app.valves.values()):
+    for valve in list(APP.valves.values()):
         valve.host_expire()
-        valve.update_metrics(app.metrics)
+        valve.update_metrics(APP.metrics)
 
 
 def _advertise():
     """Handle a request to advertise services."""
-    for dp_id, valve in list(app.valves.items()):
+    for dp_id, valve in list(APP.valves.items()):
         flowmods = valve.advertise()
         if flowmods:
             _send_flow_msgs(dp_id, flowmods)
 
 
 def _send_flow_msgs(dp_id, flow_msgs):
-    if dp_id not in app.valves:
-        app.logger.error('send_flow_msgs: unknown %s', dp_id)
+    if dp_id not in APP.valves:
+        APP.logger.error('send_flow_msgs: unknown %s', dp_id)
         return
-    valve = app.valves[dp_id]
+    valve = APP.valves[dp_id]
     flow_msgs = valve.valve_flowreorder(flow_msgs)
     valve.ofchannel_log(flow_msgs)
-    #app.logger.info('_send_flow_msgs: %s %r', dp_id, flow_msgs)
+    #APP.logger.info('_send_flow_msgs: %s %r', dp_id, flow_msgs)
     for msg in flow_msgs:
-        app.metrics.of_flowmsgs_sent.labels(dpid=hex(dp_id)).inc()
+        APP.metrics.of_flowmsgs_sent.labels(dpid=hex(dp_id)).inc()
         zof.compile(msg).send(datapath_id=hex(dp_id))
 
 
