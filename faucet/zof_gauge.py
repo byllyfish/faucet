@@ -1,5 +1,6 @@
 import zof
 from config_parser import watcher_parser
+from gauge_prom import GaugePrometheusClient
 from watcher import watcher_factory
 from valve_util import dpid_log, get_sys_prefix, get_logger
 import time
@@ -18,6 +19,7 @@ def to_dpid(dpid):
 APP = zof.Application('gauge', exception_fatal='gauge.exception')
 APP.logname = 'gauge'
 APP.watchers = None
+APP.prom_client = None
 APP.config_file = None
 
 
@@ -31,8 +33,9 @@ def start(event):
         get_logger('%s.exception' % APP.logname, exc_logfile, 'DEBUG', 0)
     logfile = os.getenv('GAUGE_LOG', sysprefix + '/var/log/ryu/faucet/gauge.log')
     if logfile:
-        get_logger(APP.logname, logfile, 'DEBUG', 1)
+        APP.logger = get_logger(APP.logname, logfile, 'DEBUG', 1)
 
+    APP.prom_client = GaugePrometheusClient()
     APP.watchers = {}
     _load_config()
 
@@ -40,11 +43,11 @@ def start(event):
 def _load_config():
     """Load Gauge config."""
     APP.config_file = os.getenv('GAUGE_CONFIG', APP.config_file)
-    new_confs = watcher_parser(APP.config_file, APP.logname)
+    new_confs = watcher_parser(APP.config_file, APP.logname, APP.prom_client)
     new_watchers = {}
 
     for conf in new_confs:
-        watcher = watcher_factory(conf)(conf, APP.logname)
+        watcher = watcher_factory(conf)(conf, APP.logname, APP.prom_client)
         watcher_dpid = watcher.dp.dp_id
 
         datapath = zof.find_datapath(datapath_id=watcher_dpid)

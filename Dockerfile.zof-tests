@@ -12,7 +12,7 @@ RUN apt-key adv --keyserver keyserver.ubuntu.com --recv-keys FFBE06FBB4EDC679174
 
 RUN \
   apt-get update && \
-  apt-get install -qy --no-install-recommends \
+  DEBIAN_FRONTEND=noninteractive apt-get install -qy --no-install-recommends \
     curl \
     fping \
     gcc \
@@ -43,7 +43,7 @@ RUN \
 RUN pip3 install --upgrade setuptools wheel \
     && pip3 install networkx pyyaml aiohttp prometheus_client influxdb couchdb bitstring \
     && cd /root \
-    && git clone https://github.com/byllyfish/zof.git \
+    && git clone -b develop https://github.com/byllyfish/zof.git \
     && git clone -b port5 --single-branch https://github.com/byllyfish/faucet.git \
     && cd zof \
     && python3 setup.py develop
