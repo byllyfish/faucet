@@ -103,8 +103,9 @@ time                    dp_name                 port_name       value
 
     def update(self, rcv_time, dp_id, msg):
         super(GaugePortStateInfluxDBLogger, self).update(rcv_time, dp_id, msg)
-        reason = msg.reason
-        port_no = msg.desc.port_no
+        _reason_map = {'ADD': 0, 'DELETE': 1, 'MODIFY': 2}
+        reason = _reason_map.get(msg.reason, msg.reason)
+        port_no = msg.port_no
         if port_no in self.dp.ports:
             port_name = self.dp.ports[port_no].name
             points = [
