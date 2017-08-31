@@ -95,11 +95,12 @@ def sig_hup(event):
 def channel_up(event):
     dp_id = to_dpid(event.datapath_id)
     if dp_id not in APP.watchers:
-        APP.logger.info('no watcher configured for %s', dp_id)
+        APP.logger.info('%s up, unknown', dpid_log(dp_id))
         return
 
-    APP.logger.info('%s up', dp_id)
+    APP.logger.info('%s up', dpid_log(dp_id))
     for watcher in list(APP.watchers[dp_id].values()):
+        APP.logger.info('%s %s watcher starting', dpid_log(dp_id), watcher.conf.type)
         watcher.start(dp_id)
 
 
@@ -107,18 +108,22 @@ def channel_up(event):
 def channel_down(event):
     dp_id = to_dpid(event.datapath_id)
     if dp_id not in APP.watchers:
+        APP.logger.info('%s down, unknown', dpid_log(dp_id))
         return
 
+    APP.logger.info('%s down', dpid_log(dp_id))
     for watcher in list(APP.watchers[dp_id].values()):
+        APP.logger.info('%s %s watcher stopping', dpid_log(dp_id), watcher.conf.type)
         watcher.stop()
-        #del APP.watchers[dp_id]
-    APP.logger.info('%s down', dp_id)
 
 
 def update_watcher(dp_id, name, msg):
     rcv_time = time.time()
-    if dp_id in APP.watchers and name in APP.watchers[dp_id]:
-        APP.watchers[dp_id][name].update(rcv_time, dp_id, msg)
+    if dp_id in APP.watchers:
+        if name in APP.watchers[dp_id]:
+            APP.watchers[dp_id][name].update(rcv_time, dp_id, msg)
+    else:
+        APP.logger.info('%s event, unknown', dpid_log(dp_id))
 
 
 @APP.message('port_status')
