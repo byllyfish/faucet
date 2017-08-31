@@ -48,10 +48,10 @@ def _load_configs(new_config_file):
                 _send_flow_msgs(new_dp.dp_id, flowmods)
                 if cold_start:
                     APP.metrics.faucet_config_reload_cold.labels(
-                        dpid=hex(dp_id)).inc()
+                        dp_id=hex(dp_id)).inc()
                 else:
                     APP.metrics.faucet_config_reload_warm.labels(
-                        dpid=hex(dp_id)).inc()
+                        dp_id=hex(dp_id)).inc()
         else:
             # pylint: disable=no-member
             valve_cl = valve_factory(new_dp)
@@ -100,13 +100,13 @@ def channel_up(event):
         event.datapath.close()
         return    
 
-    APP.metrics.of_dp_connections.labels(dpid=hex(dp_id)).inc()
+    APP.metrics.of_dp_connections.labels(dp_id=hex(dp_id)).inc()
 
     up_port_nums = [port.port_no for port in event.datapath if port.up]
     flowmods = APP.valves[dp_id].datapath_connect(dp_id, up_port_nums)
     _send_flow_msgs(dp_id, flowmods)
 
-    APP.metrics.dp_status.labels(dpid=hex(dp_id)).set(1)
+    APP.metrics.dp_status.labels(dp_id=hex(dp_id)).set(1)
 
 
 @APP.message('channel_down')
@@ -116,8 +116,8 @@ def channel_down(event):
         APP.logger.error('Unknown datapath %s', dp_id)
         return    
 
-    APP.metrics.of_dp_disconnections.labels(dpid=hex(dp_id)).inc()
-    APP.metrics.dp_status.labels(dpid=hex(dp_id)).set(0)
+    APP.metrics.of_dp_disconnections.labels(dp_id=hex(dp_id)).inc()
+    APP.metrics.dp_status.labels(dp_id=hex(dp_id)).set(0)
     APP.valves[dp_id].datapath_disconnect(dp_id)
 
 
@@ -154,7 +154,7 @@ def packet_in(event):
 
     pkt_meta = valve.parse_rcv_packet(in_port, vlan_vid, msg.data, pkt)
 
-    APP.metrics.of_packet_ins.labels(dpid=hex(dp_id)).inc()
+    APP.metrics.of_packet_ins.labels(dp_id=hex(dp_id)).inc()
     flowmods = valve.rcv_packet(dp_id, APP.valves, pkt_meta)
     _send_flow_msgs(dp_id, flowmods)
     valve.update_metrics(APP.metrics)
@@ -175,7 +175,7 @@ def port_status(event):
 
     flowmods = valve.port_status_handler(dp_id, port_no, reason, link_up)
     _send_flow_msgs(dp_id, flowmods)
-    APP.metrics.port_status.labels(dpid=hex(dp_id), port=port_no).set(link_up)
+    APP.metrics.port_status.labels(dp_id=hex(dp_id), port=port_no).set(link_up)
 
 
 @APP.message('error')
@@ -186,7 +186,7 @@ def error(event):
         return
 
     msg = event.msg
-    APP.metrics.of_errors.labels(dpid=hex(dp_id)).inc()
+    APP.metrics.of_errors.labels(dp_id=hex(dp_id)).inc()
     APP.valves[dp_id].ofchannel_log([msg])
     APP.logger.error('OFPErrorMsg: %r', msg)
 
@@ -260,7 +260,7 @@ def _send_flow_msgs(dp_id, flow_msgs):
     valve.ofchannel_log(flow_msgs)
     #APP.logger.info('_send_flow_msgs: %s %r', dp_id, flow_msgs)
     for msg in flow_msgs:
-        APP.metrics.of_flowmsgs_sent.labels(dpid=hex(dp_id)).inc()
+        APP.metrics.of_flowmsgs_sent.labels(dp_id=hex(dp_id)).inc()
         zof.compile(msg).send(datapath_id=hex(dp_id))
 
 

@@ -28,4 +28,4 @@ PYTHONPATH=../faucet python3 test_config.py
 PYTHONPATH=..:../faucet python3 test_valve.py
 
 echo "========== Running zof-faucet system tests =========="
-PYTHONPATH=..:/root/zof python faucet_mininet_test.py -n -k
+PYTHONPATH=..:/root/zof python faucet_mininet_test.py -n -k "$@"

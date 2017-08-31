@@ -26,6 +26,7 @@ except ImportError:
 
 import asyncio
 import zof
+import zof.exception as _exc
 
 
 class GaugePoller(object):
@@ -132,8 +133,11 @@ class GaugeThreadPoller(GaugePoller):
         await asyncio.sleep(random.randint(1, self.conf.interval))
         while True:
             ofmsg = zof.compile(self.send_req())
-            response = await ofmsg.request(datapath_id=hex(dp_id))
-            self.update(float(response.time), dp_id, response.msg)
+            try:
+                response = await ofmsg.request(datapath_id=hex(dp_id))
+                self.update(float(response.time), dp_id, response.msg)
+            except _exc.ControllerException as ex:
+                self.logger.warning('poll failed: %s', ex)
             await asyncio.sleep(self.conf.interval)
 
     def running(self):

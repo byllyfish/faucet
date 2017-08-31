@@ -99,6 +99,7 @@ def channel_up(event):
         return
 
     APP.logger.info('%s up', dpid_log(dp_id))
+    APP.prom_client.dp_status.labels(dp_id=hex(dp_id)).set(1)
     for watcher in list(APP.watchers[dp_id].values()):
         APP.logger.info('%s %s watcher starting', dpid_log(dp_id), watcher.conf.type)
         watcher.start(dp_id)
@@ -112,6 +113,7 @@ def channel_down(event):
         return
 
     APP.logger.info('%s down', dpid_log(dp_id))
+    APP.prom_client.dp_status.labels(dp_id=hex(dp_id)).set(0)
     for watcher in list(APP.watchers[dp_id].values()):
         APP.logger.info('%s %s watcher stopping', dpid_log(dp_id), watcher.conf.type)
         watcher.stop()

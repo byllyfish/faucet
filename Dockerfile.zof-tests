@@ -49,6 +49,6 @@ RUN pip3 install --upgrade setuptools wheel \
     && python3 setup.py develop
 
 RUN pip install --upgrade setuptools wheel \
-    && pip install ipaddress pyyaml concurrencytest packaging netifaces requests scapy
+    && pip install ipaddress pyyaml concurrencytest packaging netifaces requests scapy exabgp
 
 CMD ["/root/faucet/docker/zof-runtests.sh"]
