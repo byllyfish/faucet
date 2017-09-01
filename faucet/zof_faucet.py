@@ -141,7 +141,7 @@ def packet_in(event):
     msg = event.msg
 
     valve = APP.valves[dp_id]
-    valve.ofchannel_log([msg])
+    valve.ofchannel_log([event])
 
     pkt = msg.pkt
     in_port = msg.in_port
@@ -187,7 +187,7 @@ def error(event):
 
     msg = event.msg
     APP.metrics.of_errors.labels(dp_id=hex(dp_id)).inc()
-    APP.valves[dp_id].ofchannel_log([msg])
+    APP.valves[dp_id].ofchannel_log([event])
     APP.logger.error('OFPErrorMsg: %r', msg)
 
 
@@ -201,7 +201,7 @@ def flow_removed(event):
     msg = event.msg
     valve = APP.valves[dp_id]
 
-    valve.ofchannel_log([msg])
+    valve.ofchannel_log([event])
     if msg.reason == 'IDLE_TIMEOUT':
         flowmods = valve.flow_timeout(msg.table_id, msg.match)
         _send_flow_msgs(dp_id, flowmods)

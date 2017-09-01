@@ -223,8 +223,9 @@ class Valve(object):
             for i, ofmsg in enumerate(ofmsgs, start=1):
                 log_prefix = '%u/%u %s' % (
                     i, len(ofmsgs), valve_util.dpid_log(self.dp.dp_id))
+                # Use %r to get consistent quoting (i.e. using single-quotes)
                 self.ofchannel_logger.debug(
-                    '%s %s', log_prefix, ofmsg)
+                    '%s %r', log_prefix, ofmsg)
 
     def valve_in_match(self, table_id, in_port=None, vlan=None,
                        eth_type=None, eth_src=None,
