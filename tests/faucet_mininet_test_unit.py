@@ -3926,7 +3926,7 @@ vlans:
             mac = dst_mac
         for i in range(timeout):
             for _, debug_log in self._get_ofchannel_logs():
-                found = _find_matching_log_line(patterns, debug_log):
+                found = _find_matching_log_line(patterns, debug_log)
                 if found:
                     print(found)
                     return
