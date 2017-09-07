@@ -146,6 +146,7 @@ def flow_stats_reply_handler(event):
 def main():
     args = parse_args()
     args.listen_endpoints = ['%s:%d' % (args.ofp_listen_host, args.ofp_tcp_listen_port)]
+    args.pidfile = args.pid_file
     zof.run(args=args)
 
 
@@ -155,6 +156,7 @@ def parse_args():
     args.add_argument('--use-stderr', action='store_true')
     args.add_argument('--ofp-listen-host', default='')
     args.add_argument('--ofp-tcp-listen-port', type=int, default=6653)
+    args.add_argument('--pid-file')
     return args.parse_args()
 
 

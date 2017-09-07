@@ -277,6 +277,7 @@ def main():
     args.listen_cacert = args.ca_certs
     args.listen_privkey = args.ctl_privkey
     args.listen_versions = [4]
+    args.pidfile = args.pid_file
     zof.run(args=args)
 
 
@@ -293,6 +294,7 @@ def parse_args():
     args.add_argument('--ctl-privkey', type=file_contents_type)
     args.add_argument('--ctl-cert', type=file_contents_type)
     args.add_argument('--ca-certs', type=file_contents_type)
+    args.add_argument('--pid-file')
     metrics_endpoint = '%s:%s' % (os.getenv('FAUCET_PROMETHEUS_ADDR', ''), os.getenv('FAUCET_PROMETHEUS_PORT', '9302'))
     args.set_defaults(metrics_endpoint=metrics_endpoint)
     return args.parse_args()
