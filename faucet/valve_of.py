@@ -469,7 +469,7 @@ def valve_flowreorder(input_ofmsgs):
             # same group_id multiple times in input_ofmsgs
             new_group_id = True
             for i, groupadd_ofmsg in enumerate(groupadd_ofmsgs):
-                if groupadd_ofmsg.group_id == ofmsg.group_id:
+                if groupadd_ofmsg['msg']['group_id'] == ofmsg['msg']['group_id']:
                     groupadd_ofmsgs[i] = ofmsg
                     new_group_id = False
                     break

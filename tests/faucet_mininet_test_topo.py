@@ -7,6 +7,7 @@ import shutil
 import subprocess
 
 import netifaces
+import psutil
 
 from mininet.topo import Topo
 from mininet.node import Controller
@@ -241,8 +242,9 @@ class BaseFAUCET(Controller):
     def listen_port(self, port, state='LISTEN'):
         listening_out = self.cmd(
             faucet_mininet_test_util.tcp_listening_cmd(port, state=state)).split()
+        rpid = self.ryu_pid()
         for pid in listening_out:
-            if int(pid) == self.ryu_pid():
+            if int(pid) == rpid or psutil.Process(int(pid)).ppid() == rpid:
                 return True
         return False
 
