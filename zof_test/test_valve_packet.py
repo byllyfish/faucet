@@ -29,7 +29,6 @@ class ValvePacketTestCase(unittest.TestCase):
 
     def test_lacp(self):
         args = dict(
-            vid=1, 
             eth_src='00:00:00:00:00:01', 
             actor_system='00:00:00:00:00:02',
             actor_key=4,
@@ -52,7 +51,6 @@ class ValvePacketTestCase(unittest.TestCase):
         self.assertEqual(pkt.eth_dst, '01:80:c2:00:00:02')
         self.assertEqual(pkt.eth_src, '00:00:00:00:00:01')
         self.assertEqual(pkt.eth_type, 0x8809)
-        self.assertEqual(pkt.vlan_vid, 0x1001)
         self.assertEqual(len(pkt.payload), 110)
         self.assertEqual(pkt.payload.hex(), '01010114ffff000000000002000400ff00053a00000002140008000000000003000600090007ff0000000310000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000')
 

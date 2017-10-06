@@ -168,7 +168,7 @@ def packet_in(event):
         APP.logger.error('Missing VLAN header %r', pkt)
         return
 
-    pkt_meta = valve.parse_rcv_packet(in_port, vlan_vid, pkt.eth_type, msg.data, pkt)
+    pkt_meta = valve.parse_rcv_packet(in_port, vlan_vid, pkt.eth_type, msg.data, pkt, pkt)
 
     APP.metrics.of_packet_ins.labels(dp_id=hex(dp_id)).inc()
     flowmods = valve.rcv_packet(dp_id, APP.valves, pkt_meta)

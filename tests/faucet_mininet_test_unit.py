@@ -336,15 +336,15 @@ class FaucetSanityTest(FaucetUntaggedTest):
             port_name = port_desc['name']
             port_state = port_desc['state']
             port_config = port_desc['config']
-            port_speed_mbps = (port_desc['curr_speed'] * 1e3) / 1e6
+            port_speed_mbps = (port_desc['ethernet']['curr_speed'] * 1e3) / 1e6
             error('DP %u is %s, at %u mbps\n' % (dp_port, port_name, port_speed_mbps))
             if port_speed_mbps <= min_mbps:
                 error('port speed %u below minimum %u mbps\n' % (
                     port_speed_mbps, min_mbps))
-            elif port_config != 0:
-                error('port config %u must be 0 (all clear)' % port_config)
-            elif not (port_state == 0 or port_state == 4):
-                error('state %u must be 0 (all flags clear or live)\n' % (
+            elif port_config != []:
+                error('port config %r must be 0 (all clear)' % port_config)
+            elif not (port_state == [] or port_state == ['LIVE']):
+                error('state %r must be 0 (all flags clear or live)\n' % (
                     port_state))
             else:
                 return

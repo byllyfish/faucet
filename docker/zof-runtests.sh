@@ -19,6 +19,7 @@ sysctl -w net.ipv4.tcp_syn_retries=4
 
 # Use our custom ryu-manager script.
 export PATH=/root/faucet/tests/bin:$PATH
+ln -sf /root/faucet/tests/bin/ryu-manager /usr/local/bin/ryu-manager
 
 echo "========== Running zof-faucet unit tests =========="
 cd /root/faucet
@@ -26,8 +27,8 @@ python3 -m unittest discover zof_test
 
 cd /root/faucet/tests
 python3 test_check_config.py
-PYTHONPATH=../faucet python3 test_config.py
-PYTHONPATH=..:../faucet python3 test_valve.py
+PYTHONPATH=.. python3 test_config.py
+PYTHONPATH=.. python3 test_valve.py
 
 echo "========== Running zof-faucet system tests =========="
 PYTHONPATH=..:/root/zof python faucet_mininet_test.py -n -k "$@"

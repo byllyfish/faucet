@@ -42,7 +42,7 @@ RUN \
   apt-get purge -qy pylint python-astroid
 
 RUN pip3 install --upgrade setuptools wheel pip \
-    && pip3 install networkx==1.11 pyyaml aiohttp prometheus_client influxdb couchdb bitstring pbr \
+    && pip3 install networkx==1.11 pyyaml aiohttp prometheus_client influxdb couchdb bitstring pbr requests \
     && cd /root \
     && git clone -b develop https://github.com/byllyfish/zof.git \
     && git clone -b port5 --single-branch https://github.com/byllyfish/faucet.git \
