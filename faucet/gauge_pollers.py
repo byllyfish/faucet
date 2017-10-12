@@ -76,14 +76,15 @@ class GaugePoller(object):
         raise NotImplementedError
 
     def _stat_port_name(self, msg, stat, dp_id):
-        if stat.port_no == 'CONTROLLER':
+        port_no = stat['port_no']
+        if port_no == 'CONTROLLER':
             return 'CONTROLLER'
-        elif stat.port_no == 'LOCAL':
+        elif port_no == 'LOCAL':
             return 'LOCAL'
-        elif stat.port_no in self.dp.ports:
-            return self.dp.ports[stat.port_no].name
+        elif port_no in self.dp.ports:
+            return self.dp.ports[port_no].name
         self.logger.info('%s stats for unknown port %u',
-                         dpid_log(dp_id), stat.port_no)
+                         dpid_log(dp_id), port_no)
         return None
 
     def _format_port_stats(self, delim, stat):

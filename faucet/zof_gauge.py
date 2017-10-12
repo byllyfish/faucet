@@ -91,14 +91,14 @@ def _load_config():
 @APP.event('signal', signal='SIGHUP')
 def sig_hup(event):
     # Don't exit because of this signal.
-    event.exit = False
+    event['exit'] = False
     APP.logger.warning('reload config requested')
     _load_config()
 
 
 @APP.message('channel_up')
 def channel_up(event):
-    dp_id = to_dpid(event.datapath_id)
+    dp_id = to_dpid(event['datapath_id'])
     if dp_id not in APP.watchers:
         APP.logger.info('%s up, unknown', dpid_log(dp_id))
         return
@@ -112,7 +112,7 @@ def channel_up(event):
 
 @APP.message('channel_down')
 def channel_down(event):
-    dp_id = to_dpid(event.datapath_id)
+    dp_id = to_dpid(event['datapath_id'])
     if dp_id not in APP.watchers:
         APP.logger.info('%s down, unknown', dpid_log(dp_id))
         return
@@ -135,17 +135,17 @@ def update_watcher(dp_id, name, msg):
 
 @APP.message('port_status')
 def port_status_handler(event):
-    update_watcher(to_dpid(event.datapath_id), 'port_state', event.msg)
+    update_watcher(to_dpid(event['datapath_id']), 'port_state', event['msg'])
 
 
 @APP.message('reply.port_stats')
 def port_stats_reply_handler(event):
-    update_watcher(to_dpid(event.datapath_id), 'port_stats', event.msg)
+    update_watcher(to_dpid(event['datapath_id']), 'port_stats', event['msg'])
 
 
 @APP.message('reply.flow')
 def flow_stats_reply_handler(event):
-    update_watcher(to_dpid(event.datapath_id), 'flow_table', event.msg)
+    update_watcher(to_dpid(event['datapath_id']), 'flow_table', event['msg'])
 
 
 def main():

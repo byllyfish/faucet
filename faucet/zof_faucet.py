@@ -110,15 +110,16 @@ def start(_):
 
 @APP.message('channel_up')
 def channel_up(event):
-    dp_id = to_dpid(event.datapath_id)
+    dp_id = to_dpid(event['datapath_id'])
+    datapath = event['datapath']
     if dp_id not in APP.valves:
         APP.logger.error('Unknown datapath %s', dp_id)
-        event.datapath.close()
+        datapath.close()
         return    
 
     APP.metrics.of_dp_connections.labels(dp_id=hex(dp_id)).inc()
 
-    up_port_nums = [port.port_no for port in event.datapath if port.up]
+    up_port_nums = [port.port_no for port in datapath if port.up]
     flowmods = APP.valves[dp_id].datapath_connect(dp_id, up_port_nums)
     _send_flow_msgs(dp_id, flowmods)
 
@@ -127,7 +128,7 @@ def channel_up(event):
 
 @APP.message('channel_down')
 def channel_down(event):
-    dp_id = to_dpid(event.datapath_id)
+    dp_id = to_dpid(event['datapath_id'])
     if dp_id not in APP.valves:
         APP.logger.error('Unknown datapath %s', dp_id)
         return    
@@ -139,36 +140,36 @@ def channel_down(event):
 
 @APP.message('features_reply')
 def features_reply(event):
-    dp_id = to_dpid(event.datapath_id)
+    dp_id = to_dpid(event['datapath_id'])
     if dp_id not in APP.valves:
         APP.logger.error('Unknown datapath %s', dp_id)
         return
 
-    flowmods = APP.valves[dp_id].switch_features(dp_id, event.msg)
+    flowmods = APP.valves[dp_id].switch_features(dp_id, event['msg'])
     _send_flow_msgs(dp_id, flowmods)
 
 @APP.message('packet_in')
 def packet_in(event):
-    dp_id = to_dpid(event.datapath_id)
+    dp_id = to_dpid(event['datapath_id'])
     if dp_id not in APP.valves:
         APP.logger.error('Unknown datapath %s', dp_id)
         return
 
-    msg = event.msg
+    msg = event['msg']
 
     valve = APP.valves[dp_id]
     valve.ofchannel_log([event])
 
-    pkt = msg.pkt
-    in_port = msg.in_port
-
+    pkt = msg['pkt']
+    in_port = msg['in_port']
+    data = msg['data']
     try:
         vlan_vid = pkt.vlan_vid & 0x0fff
     except AttributeError:
         APP.logger.error('Missing VLAN header %r', pkt)
         return
 
-    pkt_meta = valve.parse_rcv_packet(in_port, vlan_vid, pkt.eth_type, msg.data, pkt, pkt)
+    pkt_meta = valve.parse_rcv_packet(in_port, vlan_vid, pkt.eth_type, data, pkt, pkt)
 
     APP.metrics.of_packet_ins.labels(dp_id=hex(dp_id)).inc()
     flowmods = valve.rcv_packet(dp_id, APP.valves, pkt_meta)
@@ -178,15 +179,15 @@ def packet_in(event):
 
 @APP.message('port_status')
 def port_status(event):
-    dp_id = to_dpid(event.datapath_id)
+    dp_id = to_dpid(event['datapath_id'])
     if dp_id not in APP.valves:
         APP.logger.warning('Unknown datapath %s', dp_id)
         return
 
-    msg = event.msg
-    port_no = msg.port_no
-    reason = msg.reason
-    link_up = 'LINK_DOWN' not in msg.state
+    msg = event['msg']
+    port_no = msg['port_no']
+    reason = msg['reason']
+    link_up = 'LINK_DOWN' not in msg['state']
     valve = APP.valves[dp_id]
 
     flowmods = valve.port_status_handler(dp_id, port_no, reason, link_up)
@@ -196,12 +197,12 @@ def port_status(event):
 
 @APP.message('error')
 def error(event):
-    dp_id = to_dpid(event.datapath_id)
+    dp_id = to_dpid(event['datapath_id'])
     if dp_id not in APP.valves:
         APP.logger.warning('Unknown datapath %s', dp_id)
         return
 
-    msg = event.msg
+    msg = event['msg']
     APP.metrics.of_errors.labels(dp_id=hex(dp_id)).inc()
     APP.valves[dp_id].ofchannel_log([event])
     APP.logger.error('OFPErrorMsg: %r', msg)
@@ -209,17 +210,17 @@ def error(event):
 
 @APP.message('flow_removed')
 def flow_removed(event):
-    dp_id = to_dpid(event.datapath_id)
+    dp_id = to_dpid(event['datapath_id'])
     if dp_id not in APP.valves:
         APP.logger.warning('Unknown datapath %s', dp_id)
         return
 
-    msg = event.msg
+    msg = event['msg']
     valve = APP.valves[dp_id]
 
     valve.ofchannel_log([event])
     if msg.reason == 'IDLE_TIMEOUT':
-        flowmods = valve.flow_timeout(msg.table_id, msg.match)
+        flowmods = valve.flow_timeout(msg['table_id'], msg['match'])
         _send_flow_msgs(dp_id, flowmods)
 
 
@@ -227,7 +228,7 @@ def flow_removed(event):
 def sig_hup(event):
     APP.logger.info('Signal event: %r', event)
     # Don't exit because of this signal.
-    event.exit = False
+    event['exit'] = False
     # Reload configuration.
     APP.logger.info('request to reload configuration')
     new_config_file = os.getenv('FAUCET_CONFIG', APP.config_file)

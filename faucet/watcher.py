@@ -54,15 +54,15 @@ class GaugePortStateLogger(GaugePortStateBaseLogger):
 
     def update(self, rcv_time, dp_id, msg):
         rcv_time_str = _rcv_time(rcv_time)
-        reason = msg.reason
-        port_no = msg.port_no
+        reason = msg['reason']
+        port_no = msg['port_no']
         log_msg = 'port %s unknown state %s' % (port_no, reason)
         if reason == 'ADD':
             log_msg = 'port %s added' % port_no
         elif reason == 'DELETE':
             log_msg = 'port %s deleted' % port_no
         elif reason == 'MODIFY':
-            link_down = 'LINK_DOWN' in msg.state
+            link_down = 'LINK_DOWN' in msg['state']
             if link_down:
                 log_msg = 'port %s down' % port_no
             else:
@@ -114,4 +114,4 @@ class GaugeFlowTableLogger(GaugeFlowTablePoller):
                     '---',
                     'time: %s' % rcv_time_str,
                     'ref: %s' % ref,
-                    'msg: %s' % str(msg))))
+                    'msg: %r' % msg)))
