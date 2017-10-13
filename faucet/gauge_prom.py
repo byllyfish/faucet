@@ -69,7 +69,7 @@ class GaugePortStatsPrometheusPoller(GaugePortStatsPoller):
         formatted_port_stats = []
         for prom_var in PROM_PORT_VARS:
             stat_name = delim.join((PROM_PORT_PREFIX, prom_var))
-            stat_val = getattr(stat, prom_var)
+            stat_val = stat[prom_var]
             if stat_val != 2**64-1:
                 formatted_port_stats.append((stat_name, stat_val))
         return formatted_port_stats

@@ -106,8 +106,8 @@ time                    dp_name                 port_name       value
     def update(self, rcv_time, dp_id, msg):
         super(GaugePortStateInfluxDBLogger, self).update(rcv_time, dp_id, msg)
         _reason_map = {'ADD': 0, 'DELETE': 1, 'MODIFY': 2}
-        reason = _reason_map.get(msg.reason, msg.reason)
-        port_no = msg.port_no
+        reason = _reason_map.get(msg['reason'], msg['reason'])
+        port_no = msg['port_no']
         if port_no in self.dp.ports:
             port_name = self.dp.ports[port_no].name
             points = [
@@ -190,19 +190,19 @@ time                arp_tpa dp_name            eth_dst eth_src eth_type icmpv6_t
         super(GaugeFlowTableInfluxDBLogger, self).update(rcv_time, dp_id, msg)
         points = []
         for stats in msg:
-            packet_count = stats.packet_count
-            byte_count = stats.byte_count
+            packet_count = stats['packet_count']
+            byte_count = stats['byte_count']
             tags = {
                 'dp_name': self.dp.name,
-                'table_id': stats.table_id,
-                'priority': stats.priority,
-                'inst_count': len(stats.instructions)
+                'table_id': stats['table_id'],
+                'priority': stats['priority'],
+                'inst_count': len(stats['instructions'])
             }
-            for oxm in stats.match:
-                val = oxm.value
-                field = oxm.field.lower()
+            for oxm in stats['match']:
+                val = oxm['value']
+                field = oxm['field'].lower()
                 if 'mask' in oxm:
-                    val = '/'.join((str(val), str(oxm.mask)))
+                    val = '/'.join((str(val), str(oxm['mask'])))
                 tags[field] = val
                 if field == 'vlan_vid' and 'mask' not in oxm:
                     tags['vlan'] = devid_present(int(val))

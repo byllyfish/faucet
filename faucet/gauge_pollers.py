@@ -90,13 +90,13 @@ class GaugePoller(object):
     def _format_port_stats(self, delim, stat):
         formatted_port_stats = []
         for stat_name_list, stat_val in (
-                (('packets', 'out'), stat.tx_packets),
-                (('packets', 'in'), stat.rx_packets),
-                (('bytes', 'out'), stat.tx_bytes),
-                (('bytes', 'in'), stat.rx_bytes),
-                (('dropped', 'out'), stat.tx_dropped),
-                (('dropped', 'in'), stat.rx_dropped),
-                (('errors', 'in'), stat.rx_errors)):
+                (('packets', 'out'), stat['tx_packets']),
+                (('packets', 'in'), stat['rx_packets']),
+                (('bytes', 'out'), stat['tx_bytes']),
+                (('bytes', 'in'), stat['rx_bytes']),
+                (('dropped', 'out'), stat['tx_dropped']),
+                (('dropped', 'in'), stat['rx_dropped']),
+                (('errors', 'in'), stat['rx_errors'])):
             # For openvswitch, unsupported statistics are set to
             # all-1-bits (UINT64_MAX), skip reporting them
             if stat_val != 2**64-1:
@@ -136,7 +136,7 @@ class GaugeThreadPoller(GaugePoller):
             ofmsg = zof.compile(self.send_req())
             try:
                 response = await ofmsg.request(datapath_id=hex(dp_id))
-                self.update(float(response.time), dp_id, response.msg)
+                self.update(float(response['time']), dp_id, response['msg'])
             except _exc.ControllerException as ex:
                 self.logger.warning('poll failed: %s', ex)
             await asyncio.sleep(self.conf.interval)
