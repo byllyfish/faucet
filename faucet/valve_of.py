@@ -355,18 +355,23 @@ def build_match_dict(in_port=None, vlan=None,
 
 def flowmod(cookie, command, table_id, priority, out_port, out_group,
             match_fields, inst, hard_timeout, idle_timeout, flags=0):
-    return dict(type='FLOW_MOD', msg=dict(
-        cookie=cookie,
-        command=command,
-        table_id=table_id,
-        priority=priority,
-        out_port=out_port,
-        out_group=out_group,
-        match=match_fields,
-        instructions=inst,
-        hard_timeout=int(hard_timeout),
-        idle_timeout=int(idle_timeout),
-        flags=[flags]))
+    """Return a FlowMod message."""
+    return {
+        'type': 'FLOW_MOD', 
+        'msg': {
+            'cookie': cookie,
+            'command': command,
+            'table_id': table_id,
+            'priority': priority,
+            'out_port': out_port,
+            'out_group': out_group,
+            'match': match_fields,
+            'instructions': inst,
+            'hard_timeout': int(hard_timeout),
+            'idle_timeout': int(idle_timeout),
+            'flags': [flags]
+        }
+    }
 
 
 def group_act(group_id):
@@ -377,20 +382,25 @@ def group_act(group_id):
 def bucket(weight=0, watch_port=ofp.OFPP_ANY,
            watch_group=ofp.OFPG_ANY, actions=None):
     """Return a group action bucket with provided actions."""
-    return dict(
-        weight=weight,
-        watch_port=watch_port,
-        watch_group=watch_group,
-        actions=actions)
+    return {
+        'weight': weight,
+        'watch_port': watch_port,
+        'watch_group': watch_group,
+        'actions': actions
+    }
 
 
 def groupmod(datapath=None, type_=ofp.OFPGT_ALL, group_id=0, buckets=None):
     """Modify a group."""
-    return dict(type='GROUP_MOD', msg=dict(
-        command=ofp.OFPGC_MODIFY,
-        type=type_,
-        group_id=group_id,
-        buckets=buckets))
+    return {
+        'type': 'GROUP_MOD', 
+        'msg': {
+            'command': ofp.OFPGC_MODIFY,
+            'type': type_,
+            'group_id': group_id,
+            'buckets': buckets
+        }
+    }
 
 
 def groupmod_ff(datapath=None, group_id=0, buckets=None):
@@ -400,11 +410,15 @@ def groupmod_ff(datapath=None, group_id=0, buckets=None):
 
 def groupadd(datapath=None, type_=ofp.OFPGT_ALL, group_id=0, buckets=None):
     """Add a group."""
-    return dict(type='GROUP_MOD', msg=dict(
-        command=ofp.OFPGC_ADD,
-        type=type_,
-        group_id=group_id,
-        buckets=buckets))
+    return {
+        'type': 'GROUP_MOD', 
+        'msg': {
+            'command': ofp.OFPGC_ADD,
+            'type': type_,
+            'group_id': group_id,
+            'buckets': buckets
+        }
+    }
 
 
 def groupadd_ff(datapath=None, group_id=0, buckets=None):
@@ -414,50 +428,66 @@ def groupadd_ff(datapath=None, group_id=0, buckets=None):
 
 def groupdel(datapath=None, group_id=ofp.OFPG_ALL):
     """Delete a group (default all groups)."""
-    return dict(type='GROUP_MOD', msg=dict(
-        command=ofp.OFPGC_DELETE,
-        type=0,
-        group_id=group_id,
-        buckets=None))
+    return {
+        'type': 'GROUP_MOD', 
+        'msg': {
+            'command': ofp.OFPGC_DELETE,
+            'type': 0,
+            'group_id': group_id,
+            'buckets': None
+        }
+    }
 
 
 def meterdel(datapath=None, meter_id=ofp.OFPM_ALL):
     """Delete a meter (default all meters)."""
-    return dict(type='METER_MOD', msg=dict(
-        command=ofp.OFPMC_DELETE,
-        flags=[],
-        meter_id=meter_id,
-        bands=[]))
+    return {
+        'type': 'METER_MOD', 
+        'msg': {
+            'command': ofp.OFPMC_DELETE,
+            'flags': [],
+            'meter_id': meter_id,
+            'bands': []
+        }
+    }
 
 
 def meteradd(meter_conf):
     """Add a meter based on YAML configuration."""
     return {
-            'type': 'METER_MOD',
-            'msg': {
-                'command': 'ADD',
-                'flags': [meter_conf['flags']],
-                'meter_id': meter_conf['meter_id'],
-                'bands': meter_conf['bands']
-            }
+        'type': 'METER_MOD',
+        'msg': {
+            'command': 'ADD',
+            'flags': [meter_conf['flags']],
+            'meter_id': meter_conf['meter_id'],
+            'bands': meter_conf['bands']
         }
+    }
 
 
 def controller_pps_meteradd(datapath=None, pps=0):
     """Add a PPS meter towards controller."""
-    return dict(type='METER_MOD', msg=dict(
-        command=ofp.OFPMC_ADD,
-        flags=['PKTPS'],
-        meter_id='CONTROLLER',
-        bands=[dict(type='DROP', rate=pps, burst_size=0)]))
+    return {
+        'type': 'METER_MOD', 
+        'msg': {
+            'command': ofp.OFPMC_ADD,
+            'flags': ['PKTPS'],
+            'meter_id': 'CONTROLLER',
+            'bands': [{'type': 'DROP', 'rate': pps, 'burst_size': 0}]
+        }
+    }
 
 
 def controller_pps_meterdel(datapath=None):
     """Delete a PPS meter towards controller."""
-    return dict(type='METER_MOD', msg=dict(
-        command=ofp.OFPMC_DELETE,
-        flags=['PKTPS'],
-        meter_id='CONTROLLER'))
+    return {
+        'type': 'METER_MOD', 
+        'msg': {
+            'command': ofp.OFPMC_DELETE,
+            'flags': ['PKTPS'],
+            'meter_id': 'CONTROLLER'
+        }
+    }
 
 
 def valve_flowreorder(input_ofmsgs):
