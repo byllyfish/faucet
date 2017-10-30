@@ -27,8 +27,8 @@ msg:
     next_tables:     [ 2, 3, 4, 5, 6, 7, 8 ]
     write_actions:   [  ]
     apply_actions:   [ OUTPUT, PUSH_VLAN, SET_FIELD ]
-    match:           [ IN_PORT, ETH_TYPE, ETH_DST/, ETH_SRC/, VLAN_VID ]
-    wildcards:       [ IN_PORT, ETH_TYPE, ETH_DST/, ETH_SRC/, VLAN_VID ]
+    match:           [ IN_PORT, ETH_TYPE, ETH_DST/, VLAN_VID ]
+    wildcards:       [ IN_PORT, ETH_TYPE, ETH_DST/, VLAN_VID ]
     write_set_field: [  ]
     apply_set_field: [ ETH_DST, ETH_SRC, VLAN_VID ]
   - table_id:        0x02
@@ -59,10 +59,8 @@ msg:
     next_tables:     [ 4, 5, 6, 7, 8 ]
     write_actions:   [  ]
     apply_actions:   [ OUTPUT, PUSH_VLAN, POP_VLAN, GROUP, SET_FIELD ]
-    match:           [ IN_PORT, ETH_TYPE, ETH_DST, ETH_SRC, VLAN_VID, IP_PROTO, 
-                       ICMPV6_TYPE ]
-    wildcards:       [ IN_PORT, ETH_TYPE, ETH_DST, ETH_SRC, VLAN_VID, IP_PROTO, 
-                       ICMPV6_TYPE ]
+    match:           [ IN_PORT, ETH_TYPE, ETH_DST, ETH_SRC, VLAN_VID ]
+    wildcards:       [ IN_PORT, ETH_TYPE, ETH_DST, ETH_SRC, VLAN_VID ]
     write_set_field: [  ]
     apply_set_field: [ ETH_DST, ETH_SRC, VLAN_VID ]
   - table_id:        0x04
@@ -103,8 +101,8 @@ msg:
     next_tables:     [ 7, 8 ]
     write_actions:   [  ]
     apply_actions:   [ OUTPUT ]
-    match:           [ ETH_TYPE, ETH_DST, IP_PROTO, ARP_TPA ]
-    wildcards:       [ ETH_TYPE, ETH_DST, IP_PROTO, ARP_TPA ]
+    match:           [ ETH_TYPE, ETH_DST, IP_PROTO, ARP_TPA, ICMPV6_TYPE ]
+    wildcards:       [ ETH_TYPE, ETH_DST, IP_PROTO, ARP_TPA, ICMPV6_TYPE ]
     write_set_field: [  ]
     apply_set_field: [  ]
   - table_id:        0x07

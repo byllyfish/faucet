@@ -6,7 +6,7 @@ msg:
     metadata_write:  0x0000000000000000
     config:          [ '0x00000003' ]
     max_entries:     0x00000032
-    instructions:    [ GOTO_TABLE, APPLY_ACTIONS ]
+    instructions:    [ GOTO_TABLE, APPLY_ACTIONS, METER ]
     next_tables:     [ 1, 2, 3, 4, 5, 6, 7, 8 ]
     write_actions:   [  ]
     apply_actions:   [ OUTPUT, PUSH_VLAN, POP_VLAN, GROUP, SET_FIELD ]
@@ -26,9 +26,9 @@ msg:
     instructions:    [ GOTO_TABLE, APPLY_ACTIONS ]
     next_tables:     [ 2, 3, 4, 5, 6, 7, 8 ]
     write_actions:   [  ]
-    apply_actions:   [ PUSH_VLAN, SET_FIELD ]
-    match:           [ IN_PORT, ETH_TYPE, ETH_DST/, ETH_SRC/, VLAN_VID ]
-    wildcards:       [ IN_PORT, ETH_TYPE, ETH_DST/, ETH_SRC/, VLAN_VID ]
+    apply_actions:   [ OUTPUT, PUSH_VLAN, SET_FIELD ]
+    match:           [ IN_PORT, ETH_TYPE, ETH_DST/, VLAN_VID ]
+    wildcards:       [ IN_PORT, ETH_TYPE, ETH_DST/, VLAN_VID ]
     write_set_field: [  ]
     apply_set_field: [ ETH_DST, ETH_SRC, VLAN_VID ]
   - table_id:        0x02
@@ -37,7 +37,7 @@ msg:
     metadata_write:  0x0000000000000000
     config:          [ '0x00000003' ]
     max_entries:     0x00000032
-    instructions:    [ GOTO_TABLE, APPLY_ACTIONS ]
+    instructions:    [ GOTO_TABLE, APPLY_ACTIONS, METER ]
     next_tables:     [ 3, 4, 5, 6, 7, 8 ]
     write_actions:   [  ]
     apply_actions:   [ OUTPUT, PUSH_VLAN, POP_VLAN, GROUP, SET_FIELD ]
@@ -59,10 +59,8 @@ msg:
     next_tables:     [ 4, 5, 6, 7, 8 ]
     write_actions:   [  ]
     apply_actions:   [ OUTPUT, PUSH_VLAN, POP_VLAN, GROUP, SET_FIELD ]
-    match:           [ IN_PORT, ETH_TYPE, ETH_DST, ETH_SRC, VLAN_VID, IP_PROTO, 
-                       ICMPV6_TYPE ]
-    wildcards:       [ IN_PORT, ETH_TYPE, ETH_DST, ETH_SRC, VLAN_VID, IP_PROTO, 
-                       ICMPV6_TYPE ]
+    match:           [ IN_PORT, ETH_TYPE, ETH_DST, ETH_SRC, VLAN_VID ]
+    wildcards:       [ IN_PORT, ETH_TYPE, ETH_DST, ETH_SRC, VLAN_VID ]
     write_set_field: [  ]
     apply_set_field: [ ETH_DST, ETH_SRC, VLAN_VID ]
   - table_id:        0x04
@@ -78,7 +76,7 @@ msg:
     match:           [ ETH_TYPE, VLAN_VID, IPV4_DST/ ]
     wildcards:       [ ETH_TYPE, VLAN_VID, IPV4_DST/ ]
     write_set_field: [  ]
-    apply_set_field: [ ETH_DST, ETH_SRC ]
+    apply_set_field: [ ETH_DST, ETH_SRC, VLAN_VID ]
   - table_id:        0x05
     name:            IPv6 FIB
     metadata_match:  0x0000000000000000
@@ -92,7 +90,7 @@ msg:
     match:           [ ETH_TYPE, VLAN_VID, IPV6_DST/ ]
     wildcards:       [ ETH_TYPE, VLAN_VID, IPV6_DST/ ]
     write_set_field: [  ]
-    apply_set_field: [ ETH_DST, ETH_SRC ]
+    apply_set_field: [ ETH_DST, ETH_SRC, VLAN_VID ]
   - table_id:        0x06
     name:            VIP
     metadata_match:  0x0000000000000000
@@ -103,8 +101,8 @@ msg:
     next_tables:     [ 7, 8 ]
     write_actions:   [  ]
     apply_actions:   [ OUTPUT ]
-    match:           [ ETH_TYPE, ETH_DST, IP_PROTO, ARP_TPA ]
-    wildcards:       [ ETH_TYPE, ETH_DST, IP_PROTO, ARP_TPA ]
+    match:           [ ETH_TYPE, ETH_DST, IP_PROTO, ARP_TPA, ICMPV6_TYPE ]
+    wildcards:       [ ETH_TYPE, ETH_DST, IP_PROTO, ARP_TPA, ICMPV6_TYPE ]
     write_set_field: [  ]
     apply_set_field: [  ]
   - table_id:        0x07
