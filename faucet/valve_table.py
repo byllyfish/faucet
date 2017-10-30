@@ -20,7 +20,6 @@ import hashlib
 import struct
 
 from faucet import valve_of
-from faucet.zof_constant import ofp
 
 
 class ValveTable(object):

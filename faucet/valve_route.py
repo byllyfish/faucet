@@ -21,13 +21,11 @@ import time
 
 import ipaddress
 
-#from ryu.lib.packet import arp, icmp, icmpv6, ipv4, ipv6
+from faucet.zof_constant import arp, ether, inet, icmp, icmpv6, ipv4, ipv6, mac
 
 from faucet import valve_of
 from faucet import valve_packet
 from faucet.valve_util import btos
-
-from faucet.zof_constant import arp, ether, inet, icmp, icmpv6, ipv4, ipv6, mac
 
 
 class NextHop(object):
@@ -777,8 +775,8 @@ class ValveIPv6RouteManager(ValveRouteManager):
         vlan = pkt_meta.vlan
         if vlan.ip_in_vip_subnet(src_ip):
             # Must be ICMPv6 and have no extended headers.
-            #if ipv6_pkt.nxt != inet.IPPROTO_ICMPV6:
-            #    return ofmsgs
+            if ipv6_pkt.ip_proto != inet.IPPROTO_ICMPV6:
+                return ofmsgs
             if ipv6_pkt.ipv6_exthdr != 1:
                 return ofmsgs
             # Explicitly ignore messages to all notes.

@@ -136,9 +136,8 @@ class Valve(object):
             for i, ofmsg in enumerate(ofmsgs, start=1):
                 log_prefix = '%u/%u %s' % (
                     i, len(ofmsgs), valve_util.dpid_log(self.dp.dp_id))
-                # Use %r to get consistent quoting (i.e. using single-quotes)
                 self.ofchannel_logger.debug(
-                    '%s %r', log_prefix, ofmsg)
+                    '%s %s', log_prefix, ofmsg)
 
     def _delete_all_valve_flows(self):
         """Delete all flows from all FAUCET tables."""
