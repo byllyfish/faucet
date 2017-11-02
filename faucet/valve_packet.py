@@ -56,17 +56,6 @@ def parse_eth_pkt(pkt):
     return pkt.get_protocol(ether.ether)
 
 
-def parse_vlan_pkt(pkt):
-    """Return parsed VLAN header.
-
-    Args:
-        pkt (ryu.lib.packet.packet): packet received from dataplane.
-    Returns:
-        ryu.lib.packet.vlan: VLAN header.
-    """
-    return pkt.get_protocol(vlan.vlan)
-
-
 def parse_lacp_pkt(pkt):
     """Return parsed LACP packet.
 
@@ -89,31 +78,7 @@ def parse_packet_in_pkt(data, max_len):
         int: VLAN VID.
         int: Ethernet type of packet (inside VLAN)
     """
-    pkt = None
-    eth_pkt = None
-    vlan_vid = None
-    eth_type = None
-
-    if max_len:
-        data = data[:max_len]
-
-    try:
-        pkt = packet.Packet(data)
-        eth_pkt = parse_eth_pkt(pkt)
-        eth_type = eth_pkt.ethertype
-        # Packet ins, can only come when a VLAN header has already been pushed
-        # (ie. when we have progressed past the VLAN table). This gaurantees
-        # a VLAN header will always be present, so we know which VLAN the packet
-        # belongs to.
-        if eth_type == valve_of.ether.ETH_TYPE_8021Q:
-            vlan_pkt = parse_vlan_pkt(pkt)
-            if vlan_pkt:
-                vlan_vid = vlan_pkt.vid
-                eth_type = vlan_pkt.ethertype
-    except (AssertionError, stream_parser.StreamParser.TooSmallException):
-        pass
-
-    return (pkt, eth_pkt, vlan_vid, eth_type)
+    raise NotImplementedError
 
 
 def mac_addr_is_unicast(mac_addr):
@@ -513,14 +478,6 @@ def router_advert(_vlan, vid, eth_src, eth_dst, src_ip, dst_ip,
                              retrans_timer=0, 
                              options=options)
     return pkt
-
-
-def ip_header_size(eth_type):
-    """Return size of a packet header with specified ether type."""
-    ip_header = build_pkt_header(
-        1, valve_of.mac.BROADCAST_STR, valve_of.mac.BROADCAST_STR, eth_type)
-    ip_header.serialize()
-    return len(ip_header.data)
 
 
 class PacketMeta(object):

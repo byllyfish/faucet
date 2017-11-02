@@ -74,7 +74,7 @@ def _load_configs(new_config_file):
         APP.logger.info(
             'Deleting de-configured %s', dpid_log(deleted_valve_dpid))
         del APP.valves[deleted_valve_dpid]
-        zof_dp = zof.find_datapath(deleted_valve_dpid)
+        zof_dp = zof.find_datapath(datapath_id=deleted_valve_dpid)
         if zof_dp:
             zof_dp.close()
     #APP._bgp.reset(self.valves, self.metrics)

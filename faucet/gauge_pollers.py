@@ -18,12 +18,12 @@
 
 import logging
 import random
+import asyncio
 
 #from ryu.lib import hub
 
 from faucet.valve_util import dpid_log
 
-import asyncio
 import zof
 import zof.exception as _exc
 
@@ -141,6 +141,11 @@ class GaugeThreadPoller(GaugePoller):
             self.thread = None
 
     async def run(self, dp_id):
+        """Send request loop.
+
+        Delays the initial request for a random interval to reduce load.
+        Then sends a request to the datapath, waits the specified interval and
+        checks that a response has been received in a loop."""
         await asyncio.sleep(random.randint(1, self.conf.interval))
         while True:
             ofmsg = zof.compile(self.send_req())
@@ -160,14 +165,8 @@ class GaugeThreadPoller(GaugePoller):
         Delays the initial request for a random interval to reduce load.
         Then sends a request to the datapath, waits the specified interval and
         checks that a response has been received in a loop."""
-        # TODO: this should use a deterministic method instead of random
-        hub.sleep(random.randint(1, self.conf.interval))
-        while True:
-            self.send_req()
-            self.reply_pending = True
-            hub.sleep(self.conf.interval)
-            if self.reply_pending:
-                self.no_response()
+        # Replaced by run() in zof.
+        raise NotImplementedError
 
     @staticmethod
     def send_req():

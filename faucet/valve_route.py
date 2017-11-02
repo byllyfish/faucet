@@ -21,7 +21,7 @@ import time
 
 import ipaddress
 
-from faucet.zof_constant import arp, ether, inet, icmp, icmpv6, ipv4, ipv6, mac
+from faucet.zof_constant import arp, inet, icmp, icmpv6, ipv4, ipv6
 
 from faucet import valve_of
 from faucet import valve_packet

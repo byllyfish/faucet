@@ -292,10 +292,6 @@ def match(match_fields):
     return pktview_to_list(match_fields)
 
 
-def valve_match_vid(value):
-    return to_match_vid(value, ofp.OFPVID_PRESENT)
-
-
 def match_from_dict(match_dict):
     return pktview_to_list(pktview_from_ofctl(match_dict, validate=True))
 
@@ -389,6 +385,7 @@ def bucket(weight=0, watch_port=ofp.OFPP_ANY,
 
 def groupmod(datapath=None, type_=ofp.OFPGT_ALL, group_id=0, buckets=None):
     """Modify a group."""
+    assert datapath is None
     return {
         'type': 'GROUP_MOD', 
         'msg': {
@@ -402,11 +399,13 @@ def groupmod(datapath=None, type_=ofp.OFPGT_ALL, group_id=0, buckets=None):
 
 def groupmod_ff(datapath=None, group_id=0, buckets=None):
     """Modify a fast failover group."""
+    assert datapath is None
     return groupmod(datapath, type_=ofp.OFPGT_FF, group_id=group_id, buckets=buckets)
 
 
 def groupadd(datapath=None, type_=ofp.OFPGT_ALL, group_id=0, buckets=None):
     """Add a group."""
+    assert datapath is None
     return {
         'type': 'GROUP_MOD', 
         'msg': {
@@ -420,11 +419,13 @@ def groupadd(datapath=None, type_=ofp.OFPGT_ALL, group_id=0, buckets=None):
 
 def groupadd_ff(datapath=None, group_id=0, buckets=None):
     """Add a fast failover group."""
+    assert datapath is None
     return groupadd(datapath, type_=ofp.OFPGT_FF, group_id=group_id, buckets=buckets)
 
 
 def groupdel(datapath=None, group_id=ofp.OFPG_ALL):
     """Delete a group (default all groups)."""
+    assert datapath is None
     return {
         'type': 'GROUP_MOD', 
         'msg': {
@@ -438,6 +439,7 @@ def groupdel(datapath=None, group_id=ofp.OFPG_ALL):
 
 def meterdel(datapath=None, meter_id=ofp.OFPM_ALL):
     """Delete a meter (default all meters)."""
+    assert datapath is None
     return {
         'type': 'METER_MOD', 
         'msg': {
@@ -464,6 +466,7 @@ def meteradd(meter_conf):
 
 def controller_pps_meteradd(datapath=None, pps=0):
     """Add a PPS meter towards controller."""
+    assert datapath is None
     return {
         'type': 'METER_MOD', 
         'msg': {
@@ -477,6 +480,7 @@ def controller_pps_meteradd(datapath=None, pps=0):
 
 def controller_pps_meterdel(datapath=None):
     """Delete a PPS meter towards controller."""
+    assert datapath is None
     return {
         'type': 'METER_MOD', 
         'msg': {

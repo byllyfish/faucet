@@ -54,6 +54,7 @@ class mac(object):
     BROADCAST_STR = 'ff:ff:ff:ff:ff:ff'
     DONTCARE_STR = '00:00:00:00:00:00'
 
+    @staticmethod
     def text_to_bin(val):
         return bytes.fromhex(val.replace(':', ''))
 
@@ -66,6 +67,7 @@ class inet(object):
 class ipv4(object):
     ipv4 = 'IPV4'
 
+    @staticmethod
     def text_to_bin(val):
         return ipaddress.ip_address(val).packed
 
@@ -73,6 +75,7 @@ class ipv4(object):
 class ipv6(object):
     ipv6 = 'IPV6'
 
+    @staticmethod
     def text_to_bin(val):
         return ipaddress.ip_address(val).packed
 

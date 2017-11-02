@@ -31,8 +31,6 @@ from faucet import valve_packet
 from faucet import valve_route
 from faucet import valve_util
 
-from zof.pktview import pktview_from_list
-
 
 class ValveLogger(object):
 
@@ -919,23 +917,6 @@ class TfmValve(Valve):
 
     PIPELINE_CONF = 'tfm_pipeline.yaml'
     SKIP_VALIDATION_TABLES = ()
-
-    def _verify_pipeline_config(self, tfm):
-        for tfm_table in tfm.body:
-            table = self.dp.tables_by_id[tfm_table.table_id]
-            if table.table_id in self.SKIP_VALIDATION_TABLES:
-                continue
-            if table.restricted_match_types is None:
-                continue
-            for prop in tfm_table.properties:
-                if not (isinstance(prop, valve_of.parser.OFPTableFeaturePropOxm) and prop.type == 8):
-                    continue
-                tfm_matches = set(sorted([oxm.type for oxm in prop.oxm_ids]))
-                if tfm_matches != table.restricted_match_types:
-                    self.logger.info(
-                        'table %s ID %s match TFM config %s != pipeline %s' % (
-                            tfm_table.name, tfm_table.table_id,
-                            tfm_matches, table.restricted_match_types))
 
     def switch_features(self, _msg):
         import os
