@@ -86,6 +86,14 @@ class arp(object):
     ARP_REPLY = 2
 
 
+class ipv4(object):
+    ipv4 = 'IPV4'
+
+
+class ipv6(object):
+    ipv6 = 'IPV6'
+
+
 class icmp(object):
     icmp = 'ICMPV4'
     ICMP_ECHO_REQUEST = 8

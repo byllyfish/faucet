@@ -25,7 +25,7 @@ import struct
 from faucet.valve_util import btos
 
 from zof.pktview import make_pktview
-from faucet.zof_constant import ether, mac, arp, inet, icmp, icmpv6, ofp, slow, bpdu
+from faucet.zof_constant import ether, mac, arp, inet, icmp, icmpv6, ofp, slow, bpdu, ipv4, ipv6
 
 SLOW_PROTOCOL_MULTICAST = slow.SLOW_PROTOCOL_MULTICAST
 ETH_VLAN_HEADER_SIZE = 14 + 4
@@ -484,9 +484,9 @@ class PacketMeta(object):
     """Original, and parsed Ethernet packet metadata."""
 
     ETH_TYPES_PARSERS = {
-        valve_of.ether.ETH_TYPE_IP: ipv4.ipv4,
-        valve_of.ether.ETH_TYPE_ARP: arp.arp,
-        valve_of.ether.ETH_TYPE_IPV6: ipv6.ipv6,
+        ether.ETH_TYPE_IP: ipv4.ipv4,
+        ether.ETH_TYPE_ARP: arp.arp,
+        ether.ETH_TYPE_IPV6: ipv6.ipv6,
     }
 
     def __init__(self, data, orig_len, pkt, eth_pkt, port, valve_vlan, eth_src, eth_dst, eth_type):
