@@ -10,20 +10,24 @@ import time
 import zof
 from zof.api_args import file_contents_type
 
-from faucet.config_parser import dp_parser
+from faucet.config_parser import dp_parser, get_config_for_api
 from faucet.config_parser_util import config_changed
-from faucet.valve_util import get_setting, get_logger, dpid_log
+from faucet.valve_util import get_setting, get_bool_setting, get_logger, dpid_log
 from faucet.valve import valve_factory, SUPPORTED_HARDWARE
 from faucet import faucet_metrics
 from faucet import valve_of
-
+from faucet import valve_util
+from faucet import faucet_experimental_api
 
 APP = zof.Application('faucet', exception_fatal='faucet.exception')
 APP.logname = 'faucet'
 APP.config_file = None
+APP.stat_reload = False
 APP.valves = None
 APP.config_hashes = None
+APP.config_file_stats = None
 APP.metrics = faucet_metrics.FaucetMetrics()
+APP.api = faucet_experimental_api.FaucetExperimentalAPI()
 
 
 def to_dpid(dpid):
@@ -85,6 +89,7 @@ def start(_):
     logfile = get_setting('FAUCET_LOG')
     loglevel = get_setting('FAUCET_LOG_LEVEL')
     exc_logfile = get_setting('FAUCET_EXCEPTION_LOG')
+    APP.stat_reload = get_bool_setting('FAUCET_CONFIG_STAT_RELOAD')
 
     # Setup logging
     APP.logger = get_logger(APP.logname, logfile, loglevel, 0)
@@ -100,6 +105,14 @@ def start(_):
     zof.ensure_future(_periodic_task(_state_expire, 5))
     zof.ensure_future(_periodic_task(_metric_update, 5))
     zof.ensure_future(_periodic_task(_advertise, 5))
+    zof.ensure_future(_periodic_task(_config_file_stat, 3))
+
+    # Register to API
+    APP.reload_config = _reload_config
+    APP.get_config = _get_config
+    APP.get_tables = _get_tables
+    APP.api._register(APP)
+    zof.post_event({'event': 'FAUCET_API_READY', 'faucet_api': APP.api})
 
 
 @APP.message('channel_up')
@@ -236,7 +249,11 @@ def sig_hup(event):
     APP.logger.info('Signal event: %r', event)
     # Don't exit because of this signal.
     event['exit'] = False
-    # Reload configuration.
+    _reload_config(None)
+
+
+# This function is called by the FaucetExperimentalAPI.
+def _reload_config(_ignore):
     APP.logger.info('request to reload configuration')
     new_config_file = APP.config_file
     if config_changed(APP.config_file, new_config_file, APP.config_hashes):
@@ -246,6 +263,18 @@ def sig_hup(event):
         APP.logger.info('configuration is unchanged, not reloading')
     # pylint: disable=no-member
     APP.metrics.faucet_config_reload_requests.inc()
+
+
+# This function is called by the FaucetExperimentalAPI.
+def _get_config():
+    """FAUCET experimental API: return config for all Valves."""
+    return get_config_for_api(APP.valves)
+
+
+# This function is called by the FaucetExperimentalAPI.
+def _get_tables(dp_id):
+    """FAUCET experimental API: return config tables for one Valve."""
+    return APP.valves[dp_id].dp.get_tables()
 
 
 async def _periodic_task(func, period, jitter=2):
@@ -282,6 +311,18 @@ def _advertise():
         flowmods = valve.advertise()
         if flowmods:
             _send_flow_msgs(dp_id, flowmods)
+
+
+def _config_file_stat():
+    """Periodically stat config files for any changes."""
+    if APP.config_hashes:
+        new_config_file_stats = valve_util.stat_config_files(APP.config_hashes)
+        if APP.config_file_stats:
+            if new_config_file_stats != APP.config_file_stats:
+                APP.logger.info('config file(s) changed on disk')
+                if APP.stat_reload:
+                    _reload_config(None)
+        APP.config_file_stats = new_config_file_stats
 
 
 def _send_flow_msgs(dp_id, flow_msgs):
