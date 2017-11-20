@@ -361,7 +361,7 @@ def main():
 def parse_args():
     # Add RYU compatible arguments.
     import zof.demo.metrics
-    args = argparse.ArgumentParser(parents=[zof.common_args()])
+    args = argparse.ArgumentParser(parents=[zof.common_args(include_x_modules=True)])
     args.add_argument('--verbose', action='store_true')
     args.add_argument('--use-stderr', action='store_true')
     args.add_argument('--wsapi-host')

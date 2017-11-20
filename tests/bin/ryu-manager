@@ -13,6 +13,7 @@ log() {
 log "ryu-manager $@"
 
 MODULE=zof_faucet
+EXTRA=""
 
 while true; do
   case $1 in 
@@ -22,6 +23,9 @@ while true; do
     faucet.gauge)
       MODULE=zof_gauge
       ;;
+    test_experimental_api.py)
+      EXTRA="--x-modules=zof_test_experimental_api"
+      ;;
     *)
       log "ryu-manager: ignore $1"
       ;;
@@ -29,4 +33,4 @@ while true; do
   shift
 done
 
-exec python3 -m faucet.$MODULE "$@"
+exec python3 -m faucet.$MODULE "$@" $EXTRA
