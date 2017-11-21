@@ -1,6 +1,66 @@
-FROM faucet/faucet-testbase:latest
+FROM ubuntu:latest
 
-RUN pip3 install networkx pyyaml aiohttp prometheus_client influxdb couchdb bitstring pbr requests \
+ENV OVSV="2.7.3"
+ENV OVSDEPS="autoconf automake libtool libssl-dev linux-headers-generic libffi-dev"
+
+ENV AG="apt-get -qy --no-install-recommends -o=Dpkg::Use-Pty=0"
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN \
+  apt-key adv --keyserver keyserver.ubuntu.com --recv-keys FFBE06FBB4EDC679174DD2CCD5AA2ED445128570 && \
+    echo "deb http://ppa.launchpad.net/byllyfish/oftr/ubuntu xenial main" >> /etc/apt/sources.list && \
+  $AG update && $AG install \
+    $OVSDEPS \
+    apt-transport-https \
+    bc \
+    bridge-utils \
+    build-essential \
+    curl \
+    fping \
+    gcc \
+    git \
+    iperf \
+    iputils-ping \
+    iproute2 \
+    ladvd \
+    libpython2.7-dev \
+    libpython3-dev \
+    libyaml-dev \
+    lsof \
+    netcat \
+    ndisc6 \
+    net-tools \
+    netcat-openbsd \
+    openvswitch-common \
+    oftr \
+    parallel \
+    patch \
+    psmisc \
+    python-pip \
+    python3-pip \
+    software-properties-common \
+    sudo \
+    tcpdump \
+    tshark \
+    vlan \
+    wget \
+    wpasupplicant && \
+  git clone -b v${OVSV} --single-branch --depth=1 https://github.com/openvswitch/ovs && \
+  cd ovs && \
+  ./boot.sh && ./configure --enable-silent-rules && make -s V=0 install && \
+  cd .. && \
+  rm -rf ovs && \
+  $AG purge $OVSDEPS && \
+  $AG autoremove
+
+
+RUN \
+  git clone -b 2.2.2 --single-branch --depth=1 https://github.com/mininet/mininet && \
+  mininet/util/install.sh -n && \
+  $AG purge pylint python-astroid
+
+RUN pip3 install --upgrade setuptools wheel pip \
+    && pip3 install networkx pyyaml aiohttp prometheus_client influxdb couchdb bitstring pbr requests \
     && cd /root \
     && git clone -b develop --single-branch --depth=1 https://github.com/byllyfish/zof.git \
     && git clone -b port5 --single-branch --depth=1 https://github.com/byllyfish/faucet.git \
@@ -10,6 +70,7 @@ RUN pip3 install networkx pyyaml aiohttp prometheus_client influxdb couchdb bits
     && cd /root/faucet \
     && python3 setup.py develop
 
-RUN pip2 install ipaddress pyyaml concurrencytest packaging netifaces requests scapy exabgp psutil
+RUN pip2 install --upgrade setuptools wheel \
+    && pip2 install ipaddress pyyaml concurrencytest packaging netifaces requests scapy exabgp psutil
 
 CMD ["/root/faucet/docker/zof-runtests.sh"]
