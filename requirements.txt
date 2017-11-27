@@ -3,6 +3,7 @@ datadiff
 dpkt
 influxdb
 ipaddress
+netaddr
 networkx
 pbr>=1.9
 prometheus_client
