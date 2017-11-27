@@ -10,6 +10,7 @@ import time
 import zof
 from zof.api_args import file_contents_type
 
+from faucet.conf import InvalidConfigError
 from faucet.config_parser import dp_parser, get_config_for_api
 from faucet.config_parser_util import config_changed
 from faucet.valve_util import get_setting, get_bool_setting, get_logger, dpid_log
@@ -34,13 +35,9 @@ def to_dpid(dpid):
     "Convert dpid to integer."""
     return int(dpid.replace(':', ''), 16)
 
-def _load_configs(new_config_file):
-    APP.config_file = new_config_file
-    APP.config_hashes, new_dps = dp_parser(
-        new_config_file, APP.logname)
-    if new_dps is None:
-        APP.logger.error('new config bad - rejecting')
-        return
+
+def _apply_configs(new_dps):
+    """Actually apply configs."""
     deleted_valve_dpids = (
         set(list(APP.valves.keys())) -
         set([valve.dp_id for valve in new_dps]))
@@ -82,6 +79,19 @@ def _load_configs(new_config_file):
         if zof_dp:
             zof_dp.close()
     #APP._bgp.reset(self.valves, self.metrics)
+
+
+def _load_configs(new_config_file):
+    try:
+        new_config_hashes, new_dps = dp_parser(new_config_file, APP.logname)
+        APP.config_file = new_config_file
+        APP.config_hashes = new_config_hashes
+        _apply_configs(new_dps)
+
+    except InvalidConfigError as err:
+        APP.logger.error('New config bad (%s) - rejecting' % err)
+        return
+
 
 @APP.event('start')
 def start(_):
