@@ -126,6 +126,8 @@ class FaucetExperimentalEventNotifier(object):
         """
         if not socket_path:
             return None
+        if not os.path.exists(os.path.dirname(socket_path)):
+            socket_path = '/var/run/faucet/faucet.sock'
         socket_dir = os.path.dirname(socket_path)
         if socket_dir:
             if not os.path.exists(socket_dir):
@@ -136,5 +138,11 @@ class FaucetExperimentalEventNotifier(object):
                     return None
             if not os.access(socket_dir, os.R_OK | os.W_OK | os.X_OK):
                 self.logger.error('Incorrect permissions set on socket directory %s', socket_dir)
+                return None
+        if os.path.exists(socket_path):
+            try:
+                os.remove(socket_path)
+            except PermissionError as err: # pytype: disable=name-error
+                self.logger.error('Unable to remove old socket: %s', err)
                 return None
         return socket_path
