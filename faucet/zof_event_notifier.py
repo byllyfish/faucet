@@ -40,13 +40,13 @@ class _NotifierProtocol(asyncio.Protocol):
         self.can_write = True
 
     def connection_made(self, transport):
-        self.logger.info('event client connected')
+        self.notifier.logger.info('event client connected')
         transport.set_write_buffer_limits(8192)
         self.transport = transport
         self.notifier.writers.append(self)
 
     def connection_lost(self, exc):
-        self.logger.info('event client disconnected')
+        self.notifier.logger.info('event client disconnected')
         try:
             self.notifier.writers.remove(self)
         except ValueError:

@@ -134,7 +134,8 @@ async def start(_):
 
 @APP.event('stop')
 def stop(event):
-    APP.notifier.stop()
+    if APP.notifier:
+        APP.notifier.stop()
 
 
 @APP.message('channel_up')
