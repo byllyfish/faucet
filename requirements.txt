@@ -2,10 +2,9 @@ couchdb
 datadiff
 influxdb
 ipaddress
-msgpack
-msgpack-python
+netaddr
 networkx
 pbr>=1.9
 prometheus_client
 pyyaml
-ryu==4.21
+zof

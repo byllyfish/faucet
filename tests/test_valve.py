@@ -23,16 +23,16 @@ import unittest
 import tempfile
 import shutil
 
-from ryu.lib import mac
-from ryu.lib.packet import arp, ethernet, icmpv6, ipv4, ipv6, packet, vlan
-from ryu.ofproto import ether, inet
-from ryu.ofproto import ofproto_v1_3 as ofp
+from faucet.zof_constant import ofp, ipv4, ipv6, arp, mac, ether, inet
+from zof.pktview import make_pktview
+#from ryu.ofproto import ofproto_v1_3 as ofp
+#from ryu.lib.packet import ethernet, arp, vlan, ipv4, ipv6, packet
 
 from prometheus_client import CollectorRegistry
 
 from faucet.config_parser import dp_parser
 from faucet.valve import valve_factory
-from faucet import faucet_experimental_event
+from faucet import zof_event_notifier
 from faucet import faucet_metrics
 from faucet import valve_packet
 
@@ -40,45 +40,29 @@ from fakeoftable import FakeOFTable
 
 
 def build_pkt(pkt):
-    """Build and return a packet and eth type from a dict."""
-    layers = []
-    assert 'eth_dst' in pkt and 'eth_src' in pkt
-    ethertype = None
+    result = make_pktview(eth_src=pkt['eth_src'], eth_dst=pkt['eth_dst'])
     if 'arp_source_ip' in pkt and 'arp_target_ip' in pkt:
-        ethertype = ether.ETH_TYPE_ARP
-        layers.append(arp.arp(src_ip=pkt['arp_source_ip'], dst_ip=pkt['arp_target_ip']))
+        result.eth_type = ether.ETH_TYPE_ARP
+        result.arp_tpa = pkt['arp_target_ip']
+        result.arp_op = arp.ARP_REQUEST
+        result.arp_spa = pkt['arp_source_ip']
     elif 'ipv6_src' in pkt and 'ipv6_dst' in pkt:
-        ethertype = ether.ETH_TYPE_IPV6
-        layers.append(ipv6.ipv6(
-            src=pkt['ipv6_src'],
-            dst=pkt['ipv6_dst'],
-            nxt=inet.IPPROTO_ICMPV6))
+        result.eth_type = ether.ETH_TYPE_IPV6
+        result.ipv6_src = pkt['ipv6_src']
+        result.ipv6_dst = pkt['ipv6_dst']
+        result.ip_proto = inet.IPPROTO_ICMPV6
+        result.ipv6_exthdr = 1
         if 'neighbor_solicit_ip' in pkt:
-            layers.append(icmpv6.icmpv6(
-                type_=icmpv6.ND_NEIGHBOR_SOLICIT,
-                data=icmpv6.nd_neighbor(
-                    dst=pkt['neighbor_solicit_ip'],
-                    option=icmpv6.nd_option_sla(hw_src=pkt['eth_src']))))
+            result.ipv6_nd_target = pkt['neighbor_solicit_ip']
+            result.ipv6_nd_sll = pkt['eth_src']
     elif 'ipv4_src' in pkt and 'ipv4_dst' in pkt:
-        ethertype = ether.ETH_TYPE_IP
-        net = ipv4.ipv4(src=pkt['ipv4_src'], dst=pkt['ipv4_dst'])
-        layers.append(net)
+        result.eth_type = ether.ETH_TYPE_IP
+        result.ipv4_src = pkt['ipv4_src']
+        result.ipv4_dst = pkt['ipv4_dst']
     if 'vid' in pkt:
-        tpid = ether.ETH_TYPE_8021Q
-        layers.append(vlan.vlan(vid=pkt['vid'], ethertype=ethertype))
-    else:
-        tpid = ethertype
-    assert ethertype is not None, pkt
-    eth = ethernet.ethernet(
-        dst=pkt['eth_dst'],
-        src=pkt['eth_src'],
-        ethertype=tpid)
-    layers.append(eth)
-    result = packet.Packet()
-    for layer in layers:
-        result.add_protocol(layer)
-    result.serialize()
-    return (result, ethertype)
+        result.vlan_vid = pkt['vid']
+    assert 'eth_type' in result, pkt
+    return (result, result.eth_type)
 
 
 class ValveTestBase(unittest.TestCase):
@@ -180,10 +164,11 @@ vlans:
         # TODO: verify events
         self.faucet_event_sock = None
         self.logger = None
+
         # TODO: verify Prometheus variables
         self.registry = CollectorRegistry()
         self.metrics = faucet_metrics.FaucetMetrics(reg=self.registry) # pylint: disable=unexpected-keyword-arg
-        self.notifier = faucet_experimental_event.FaucetExperimentalEventNotifier(
+        self.notifier = zof_event_notifier.FaucetExperimentalEventNotifier(
             self.faucet_event_sock, self.metrics, self.logger)
         dp = self.update_config(config)
         self.valve = valve_factory(dp)(dp, 'test_valve', self.notifier)
@@ -274,7 +259,7 @@ vlans:
         pkt, eth_type = build_pkt(match)
         eth_pkt = valve_packet.parse_eth_pkt(pkt)
         pkt_meta = self.valve.parse_rcv_packet(
-            port, vid, eth_type, pkt.data, len(pkt.data), pkt, eth_pkt)
+            port, vid, eth_type, b'', 0, pkt, eth_pkt)
         rcv_packet_ofmsgs = self.valve.rcv_packet(
             other_valves=[], pkt_meta=pkt_meta)
         self.table.apply_ofmsgs(rcv_packet_ofmsgs)
