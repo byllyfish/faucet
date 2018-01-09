@@ -509,10 +509,10 @@ configuration.
                             2**16-1, self.meters, acl.exact_match,
                             vlan_vid=vid)
                         assert ofmsgs
-                        for ofmsg in ofmsgs:
-                            ofmsg.datapath = null_dp
-                            ofmsg.set_xid(0)
-                            ofmsg.serialize()
+                        #for ofmsg in ofmsgs:
+                        #    ofmsg.datapath = null_dp
+                        #    ofmsg.set_xid(0)
+                        #    ofmsg.serialize()
                     except (AddrFormatError, KeyError, ValueError) as err:
                         raise InvalidConfigError(err)
                     for port_no in acl.mirror_destinations:
