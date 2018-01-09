@@ -68,8 +68,7 @@ def build_output_actions(output_dict):
             valve_of.set_eth_dst(output_dict['dl_dst']))
     if 'set_fields' in output_dict:
         for set_fields in output_dict['set_fields']:
-            output_actions.append(
-                valve_of.parser.OFPActionSetField(**set_fields))
+            output_actions.append(valve_of.set_field(**set_fields))
     if 'port' in output_dict:
         output_port = output_dict['port']
         output_actions.append(valve_of.output_port(output_port))

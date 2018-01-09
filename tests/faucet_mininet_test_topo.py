@@ -10,6 +10,7 @@ import subprocess
 import time
 
 import netifaces
+import psutil
 
 # pylint: disable=import-error
 from mininet.log import error, output
@@ -406,7 +407,7 @@ socket_timeout=15
                     os.path.dirname(full_faucet_dir),
                     ' '.join(env_vars),
                     self.MAX_CTL_TIME,
-                    os.path.join(full_faucet_dir, '__main__.py'),
+                    '/usr/local/bin/faucet',
                     cprofile_args,
                     args))
             script_wrapper.write(faucet_cli)
@@ -426,8 +427,9 @@ socket_timeout=15
         for ipv in (4, 6):
             listening_out = self.cmd(
                 faucet_mininet_test_util.tcp_listening_cmd(port, ipv=ipv, state=state)).split()
+            rpid = self.ryu_pid()
             for pid in listening_out:
-                if int(pid) == self.ryu_pid():
+                if int(pid) == rpid or psutil.Process(int(pid)).ppid() == rpid:
                     return True
         return False
 
