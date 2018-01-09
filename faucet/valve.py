@@ -22,7 +22,7 @@ import time
 
 from collections import deque, namedtuple
 
-from faucet import tfm_pipeline
+#from faucet import tfm_pipeline
 from faucet import valve_acl
 from faucet import valve_flood
 from faucet import valve_host
@@ -304,11 +304,11 @@ class Valve(object):
         """Handle OF DP description."""
         self.metrics.of_dp_desc_stats.labels( # pylint: disable=no-member
             **dict(self.base_prom_labels,
-                   mfr_desc=body.mfr_desc,
-                   hw_desc=body.hw_desc,
-                   sw_desc=body.sw_desc,
-                   serial_num=body.serial_num,
-                   dp_desc=body.dp_desc)).set(self.dp.dp_id)
+                   mfr_desc=body['mfr_desc'],
+                   hw_desc=body['hw_desc'],
+                   sw_desc=body['sw_desc'],
+                   serial_num=body['serial_num'],
+                   dp_desc=body['dp_desc'])).set(self.dp.dp_id)
 
     def port_status_handler(self, port_no, reason, port_status):
         """Return OpenFlow messages responding to port operational status change."""
@@ -397,7 +397,7 @@ class Valve(object):
                         port_descr=lldp_beacon['port_descr'])
                     ofmsgs.append(
                         valve_of.packetout(
-                            port.number, lldp_beacon_pkt.data))
+                            port.number, lldp_beacon_pkt))
                     port.dyn_last_lldp_beacon_time = now
                     beacons_sent += 1
                     if beacons_sent == self.dp.lldp_beacon['max_per_interval']:
@@ -534,7 +534,7 @@ class Valve(object):
         for port_num in port_nums:
             if port_num not in self.dp.ports:
                 self.logger.info(
-                    'Ignoring port:%u not present in configuration file' % port_num)
+                    'Ignoring port:%s not present in configuration file' % port_num)
                 continue
 
             port = self.dp.ports[port_num]
@@ -695,7 +695,7 @@ class Valve(object):
                     lacp_pkt.actor_state_aggregation,
                     lacp_pkt.actor_state_synchronization,
                     lacp_pkt.actor_state_activity)
-                ofmsgs.append(valve_of.packetout(pkt_meta.port.number, pkt.data))
+                ofmsgs.append(valve_of.packetout(pkt_meta.port.number, pkt))
         return ofmsgs
 
     def _control_plane_handler(self, pkt_meta, route_manager):
@@ -784,8 +784,8 @@ class Valve(object):
         Returns:
             PacketMeta instance.
         """
-        eth_src = eth_pkt.src
-        eth_dst = eth_pkt.dst
+        eth_src = eth_pkt.eth_src
+        eth_dst = eth_pkt.eth_dst
         vlan = self.dp.vlans[vlan_vid]
         port = self.dp.ports[in_port]
         return valve_packet.PacketMeta(
@@ -794,21 +794,21 @@ class Valve(object):
     def parse_pkt_meta(self, msg):
         if not self.dp.running:
             return None
-        if self.dp.cookie != msg.cookie:
+        if self.dp.cookie != msg['cookie']:
             return None
         # Drop any packet we didn't specifically ask for
-        if msg.reason != valve_of.ofp.OFPR_ACTION:
+        if msg['reason'] != valve_of.ofp.OFPR_ACTION:
             return None
-        in_port = msg.match['in_port']
+        in_port = msg['in_port']
         if not self.port_no_valid(in_port):
             return None
 
         # Truncate packet in data (OVS > 2.5 does not honor max_len)
-        msg.data = msg.data[:valve_of.MAX_PACKET_IN_BYTES]
+        #msg.data = msg.data[:valve_of.MAX_PACKET_IN_BYTES]
 
         # eth/VLAN header only
         pkt, eth_pkt, vlan_vid, eth_type = valve_packet.parse_packet_in_pkt(
-            msg.data, max_len=valve_packet.ETH_VLAN_HEADER_SIZE)
+            msg['pkt'], max_len=valve_packet.ETH_VLAN_HEADER_SIZE)
         if vlan_vid is None:
             self.logger.info(
                 'packet without VLAN header port %u' % in_port)
@@ -822,7 +822,7 @@ class Valve(object):
                 'packet for unknown VLAN %u' % vlan_vid)
             return None
         pkt_meta = self.parse_rcv_packet(
-            in_port, vlan_vid, eth_type, msg.data, msg.total_len, pkt, eth_pkt)
+            in_port, vlan_vid, eth_type, b'', 0, pkt, eth_pkt)
         if not valve_packet.mac_addr_is_unicast(pkt_meta.eth_src):
             self.logger.info(
                 'packet with non-unicast eth_src %s port %u' % (
@@ -1126,34 +1126,19 @@ class Valve(object):
 class TfmValve(Valve):
     """Valve implementation that uses OpenFlow send table features messages."""
 
-    PIPELINE_CONF = 'tfm_pipeline.json'
+    PIPELINE_CONF = 'tfm_pipeline.yaml'
     SKIP_VALIDATION_TABLES = ()
 
-    def _verify_pipeline_config(self, tfm):
-        for tfm_table in tfm.body:
-            table = self.dp.tables_by_id[tfm_table.table_id]
-            if table.table_id in self.SKIP_VALIDATION_TABLES:
-                continue
-            if table.restricted_match_types is None:
-                continue
-            for prop in tfm_table.properties:
-                if not (isinstance(prop, valve_of.parser.OFPTableFeaturePropOxm) and prop.type == 8):
-                    continue
-                tfm_matches = set(sorted([oxm.type for oxm in prop.oxm_ids]))
-                if tfm_matches != table.restricted_match_types:
-                    self.logger.info(
-                        'table %s ID %s match TFM config %s != pipeline %s' % (
-                            tfm_table.name, tfm_table.table_id,
-                            tfm_matches, table.restricted_match_types))
-
-    def switch_features(self, msg):
+    def switch_features(self, _msg):
         ofmsgs = super(TfmValve, self).switch_features(msg)
-        ryu_table_loader = tfm_pipeline.LoadRyuTables(
-            self.dp.pipeline_config_dir, self.PIPELINE_CONF)
+        import os
+        pipeline_config = os.path.join(self.dp.pipeline_config_dir, self.PIPELINE_CONF)
+        with open(pipeline_config) as afile:
+            tfm = afile.read()
         self.logger.info('loading pipeline configuration')
-        ofmsgs.extend(self._delete_all_valve_flows())
-        tfm = valve_of.table_features(ryu_table_loader.load_tables())
-        self._verify_pipeline_config(tfm)
+        ofmsgs = self._delete_all_valve_flows()
+        # Ignore consistency check...
+        #self._verify_pipeline_config(tfm)
         ofmsgs.append(tfm)
         return ofmsgs
 
@@ -1161,7 +1146,7 @@ class TfmValve(Valve):
 class ArubaValve(TfmValve):
     """Valve implementation that uses OpenFlow send table features messages."""
 
-    PIPELINE_CONF = 'aruba_pipeline.json'
+    PIPELINE_CONF = 'aruba_pipeline.yaml'
     DEC_TTL = False
 
 

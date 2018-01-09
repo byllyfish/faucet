@@ -409,15 +409,15 @@ class FaucetSanityTest(FaucetUntaggedTest):
             port_name = port_desc['name']
             port_state = port_desc['state']
             port_config = port_desc['config']
-            port_speed_mbps = (port_desc['curr_speed'] * 1e3) / 1e6
+            port_speed_mbps = (port_desc['ethernet']['curr_speed'] * 1e3) / 1e6
             error('DP %u is %s, at %u mbps\n' % (dp_port, port_name, port_speed_mbps))
             if port_speed_mbps <= min_mbps:
                 error('port speed %u below minimum %u mbps\n' % (
                     port_speed_mbps, min_mbps))
-            elif port_config != 0:
-                error('port config %u must be 0 (all clear)' % port_config)
-            elif not (port_state == 0 or port_state == 4):
-                error('state %u must be 0 (all flags clear or live)\n' % (
+            elif port_config != []:
+                error('port config %r must be 0 (all clear)' % port_config)
+            elif not (port_state == [] or port_state == ['LIVE']):
+                error('state %r must be 0 (all flags clear or live)\n' % (
                     port_state))
             else:
                 return
@@ -1795,6 +1795,7 @@ class FaucetConfigStatReloadAclTest(FaucetConfigReloadAclTest):
     STAT_RELOAD = '1'
 
 
+@unittest.skip('zof does not support BGP yet')
 class FaucetUntaggedBGPIPv4DefaultRouteTest(FaucetUntaggedTest):
     """Test IPv4 routing and import default route from BGP."""
 
@@ -1864,6 +1865,7 @@ vlans:
         self.one_ipv4_controller_ping(first_host)
 
 
+@unittest.skip('zof does not support BGP yet')
 class FaucetUntaggedBGPIPv4RouteTest(FaucetUntaggedTest):
     """Test IPv4 routing and import from BGP."""
 
@@ -1945,6 +1947,7 @@ vlans:
             self.one_ipv4_controller_ping(host)
 
 
+@unittest.skip('zof does not support BGP yet')
 class FaucetUntaggedIPv4RouteTest(FaucetUntaggedTest):
     """Test IPv4 routing and export to BGP."""
 
@@ -4242,6 +4245,7 @@ vlans:
         self.one_ipv6_ping(second_host, first_host_net.ip)
 
 
+@unittest.skip('zof does not support BGP yet')
 class FaucetUntaggedBGPIPv6DefaultRouteTest(FaucetUntaggedTest):
 
     CONFIG_GLOBAL = """
@@ -4310,6 +4314,7 @@ vlans:
         self.one_ipv6_controller_ping(first_host)
 
 
+@unittest.skip('zof does not support BGP yet')
 class FaucetUntaggedBGPIPv6RouteTest(FaucetUntaggedTest):
 
     CONFIG_GLOBAL = """
@@ -4434,6 +4439,7 @@ vlans:
         self.one_ipv6_ping(second_host, first_host_ctrl_ip)
 
 
+@unittest.skip('zof does not support BGP yet')
 class FaucetUntaggedIPv6RouteTest(FaucetUntaggedTest):
 
     CONFIG_GLOBAL = """
@@ -5231,6 +5237,15 @@ acls:
             source_host, overridden_host, rewrite_host, overridden_host)
 
 
+def _find_matching_log_line(patterns, filename):
+    """Return first line from file that matches all the regex patterns."""
+    with open(filename) as afile:
+        for line in afile:
+            if all(re.search(pat, line) for pat in patterns):
+                return line
+    return None
+
+
 @unittest.skip('use_idle_timeout unreliable')
 class FaucetWithUseIdleTimeoutTest(FaucetUntaggedTest):
     CONFIG_GLOBAL = """
@@ -5263,22 +5278,22 @@ vlans:
         self.fail('host %s still learned' % host)
 
     def wait_for_flowremoved_msg(self, src_mac=None, dst_mac=None, timeout=30):
-        pattern = "OFPFlowRemoved"
+        patterns = ["'type': 'FLOW_REMOVED'", "'reason': 'IDLE_TIMEOUT'"]
         mac = None
         if src_mac:
-            pattern = "OFPFlowRemoved(.*)'eth_src': '%s'" % src_mac
+            patterns.extend(["'field': 'ETH_SRC'", "'value': '%s'" % src_mac])
             mac = src_mac
         if dst_mac:
-            pattern = "OFPFlowRemoved(.*)'eth_dst': '%s'" % dst_mac
+            patterns.extend(["'field': 'ETH_DST'", "'value': '%s'" % dst_mac])
             mac = dst_mac
         for _ in range(timeout):
             for _, debug_log_name in self._get_ofchannel_logs():
-                with open(debug_log_name) as debug_log:
-                    debug = debug_log.read()
-                if re.search(pattern, debug):
+                found = _find_matching_log_line(patterns, debug_log_name)
+                if found:
+                    print(found)
                     return
             time.sleep(1)
-        self.fail('Not received OFPFlowRemoved for host %s' % mac)
+        self.fail('Not received FLOW_REMOVED for host %s' % mac)
 
     def wait_for_host_log_msg(self, host_mac, msg, timeout=15):
         controller = self._get_controller()
