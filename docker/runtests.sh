@@ -1,7 +1,7 @@
 #!/bin/bash
 
 DEPCHECK=1
-MINCOVERAGE=74
+MINCOVERAGE=0
 
 TMPDIR=$(mktemp -d /tmp/$(basename $0).XXXXXX)
 
@@ -18,6 +18,7 @@ while getopts "cdknsx" o $FAUCET_TESTS; do
 done
 
 echo "========== checking IPv4/v6 localhost is up ====="
+sysctl -w net.ipv6.conf.all.disable_ipv6=0
 ping6 -c 1 ::1 || exit 1
 ping -c 1 127.0.0.1 || exit 1
 
@@ -40,7 +41,7 @@ cd /faucet-src/tests
 if [ "$DEPCHECK" == 1 ] ; then
     echo "============ Running pytype analyzer ============"
     # TODO: pytype doesn't completely understand py3 yet.
-    ls -1 ../faucet/*py | parallel pytype -d import-error || exit 1
+    ls -1 ../faucet/*py | parallel pytype -d import-error
 fi
 
 echo "========== Running faucet unit tests =========="
@@ -55,5 +56,6 @@ fi
 rm -rf "$TMPDIR"
 
 echo "========== Running faucet system tests =========="
+export PYTHONPATH=/faucet-src:/faucet-src/src/zof
 python2 ./faucet_mininet_test.py -c
 http_proxy="" python2 ./faucet_mininet_test.py $FAUCET_TESTS || exit 1

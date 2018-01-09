@@ -20,12 +20,7 @@ import signal
 import sys
 import time
 
-from ryu.controller.handler import MAIN_DISPATCHER
-from ryu.controller.handler import set_ev_cls
-from ryu.controller import dpset
-from ryu.controller import event
-from ryu.controller import ofp_event
-from ryu.lib import hub
+import zof
 
 from faucet import valve_of
 from faucet.config_parser import watcher_parser
@@ -34,13 +29,9 @@ from faucet.valve_util import dpid_log, kill_on_exception, stat_config_files
 from faucet.watcher import watcher_factory
 from faucet import valve_ryuapp
 
+APP = zof.Application('gauge')
 
-class EventGaugeReconfigure(event.EventBase):
-    """Event sent to Gauge to cause config reload."""
-
-    pass
-
-
+@APP.bind()
 class Gauge(valve_ryuapp.RyuAppBase):
     """Ryu app for polling Faucet controlled datapaths for stats/state.
 
@@ -49,7 +40,6 @@ class Gauge(valve_ryuapp.RyuAppBase):
     GAUGE_CONFIG. It logs to the file set as the environment variable
     GAUGE_LOG,
     """
-    _CONTEXTS = {'dpset': dpset.DPSet}
     logname = 'gauge'
     exc_logname = logname + '.exception'
 
@@ -59,19 +49,14 @@ class Gauge(valve_ryuapp.RyuAppBase):
         self.watchers = {}
         self.config_file_stats = None
 
-    def start(self):
-        super(Gauge, self).start()
+    @APP.event('start')
+    def start(self, _):
 
         if self.stat_reload:
             self.logger.info('will automatically reload new config on changes')
         self._load_config()
 
-        self.threads.extend([
-            hub.spawn(thread) for thread in (self._config_file_stat,)])
-
-        # Set the signal handler for reloading config file
-        signal.signal(signal.SIGHUP, self.signal_handler)
-        signal.signal(signal.SIGINT, self.signal_handler)
+        zof.ensure_future(self._config_file_stat())
 
     def _get_watchers(self, ryu_dp, handler_name):
         """Get Watchers instances to response to an event.
@@ -128,21 +113,20 @@ class Gauge(valve_ryuapp.RyuAppBase):
             for watcher in watchers[name]:
                 watcher.update(rcv_time, ryu_dp.id, msg)
 
+    @APP.event('signal')
     @kill_on_exception(exc_logname)
-    def signal_handler(self, sigid, _):
+    def signal_handler(self, event):
         """Handle signal and cause config reload.
 
         Args:
             sigid (int): signal received.
         """
-        if sigid == signal.SIGHUP:
-            self.send_event('Gauge', EventGaugeReconfigure())
-        elif sigid == signal.SIGINT:
-            self.close()
-            sys.exit(0)
+        if event['signal'] == 'SIGHUP':
+            event['exit'] = False
+            self.reload_config(None)
 
     @kill_on_exception(exc_logname)
-    def _config_file_stat(self):
+    async def _config_file_stat(self):
         """Periodically stat config files for any changes."""
         # TODO: Better to use an inotify method that doesn't conflict with eventlets.
         while True:
@@ -153,12 +137,11 @@ class Gauge(valve_ryuapp.RyuAppBase):
                 if self.config_file_stats:
                     if new_config_file_stats != self.config_file_stats:
                         if self.stat_reload:
-                            self.send_event('Gauge', EventGaugeReconfigure())
+                            self.reload_config(None)
                         self.logger.info('config file(s) changed on disk')
                 self.config_file_stats = new_config_file_stats
-            self._thread_jitter(3)
+            await self._thread_jitter(3)
 
-    @set_ev_cls(EventGaugeReconfigure, MAIN_DISPATCHER)
     def reload_config(self, _):
         """Handle request for Gauge config reload."""
         self.logger.warning('reload config requested')
@@ -186,8 +169,8 @@ class Gauge(valve_ryuapp.RyuAppBase):
         if watchers is None:
             return
         self.logger.info('%s up', dpid_log(ryu_dp.id))
-        ryu_dp.send_msg(valve_of.faucet_config(datapath=ryu_dp))
-        ryu_dp.send_msg(valve_of.gauge_async(datapath=ryu_dp))
+        zof.compile(valve_of.faucet_config()).send(datapath_id=hex(ryu_dp.id))
+        zof.compile(valve_of.gauge_async()).send(datapath_id=hex(ryu_dp.id))
         self._start_watchers(ryu_dp, ryu_dp.id, watchers)
 
     def _stop_watchers(self, dp_id, watchers):
@@ -213,7 +196,8 @@ class Gauge(valve_ryuapp.RyuAppBase):
         self.logger.info('%s down', dpid_log(ryu_dp.id))
         self._stop_watchers(ryu_dp.id, watchers)
 
-    @set_ev_cls(dpset.EventDP, dpset.DPSET_EV_DISPATCHER)
+    @APP.message('CHANNEL_UP')
+    @APP.message('CHANNEL_DOWN')
     @kill_on_exception(exc_logname)
     def handler_connect_or_disconnect(self, ryu_event):
         """Handle DP dis/connect.
@@ -221,13 +205,13 @@ class Gauge(valve_ryuapp.RyuAppBase):
         Args:
            ryu_event (ryu.controller.event.EventReplyBase): DP reconnection.
         """
-        ryu_dp = ryu_event.dp
-        if ryu_event.enter:
+        ryu_dp = ryu_event['datapath']
+        if ryu_event['type'] == 'CHANNEL_UP':
             self._handler_datapath_up(ryu_dp)
         else:
             self._handler_datapath_down(ryu_dp)
 
-    @set_ev_cls(dpset.EventDPReconnected, dpset.DPSET_EV_DISPATCHER)
+    # UNUSED in ZOF
     @kill_on_exception(exc_logname)
     def handler_reconnect(self, ryu_event):
         """Handle a DP reconnection event.
@@ -238,7 +222,7 @@ class Gauge(valve_ryuapp.RyuAppBase):
         ryu_dp = ryu_event.dp
         self._handler_datapath_up(ryu_dp)
 
-    @set_ev_cls(ofp_event.EventOFPPortStatus, MAIN_DISPATCHER) # pylint: disable=no-member
+    @APP.message('PORT_STATUS')
     @kill_on_exception(exc_logname)
     def port_status_handler(self, ryu_event):
         """Handle port status change event.
@@ -247,9 +231,9 @@ class Gauge(valve_ryuapp.RyuAppBase):
            ryu_event (ryu.controller.event.EventReplyBase): port status change event.
         """
         self._update_watcher(
-            ryu_event.msg.datapath, 'port_state', ryu_event.msg)
+            ryu_event['datapath'], 'port_state', ryu_event['msg'])
 
-    @set_ev_cls(ofp_event.EventOFPPortStatsReply, MAIN_DISPATCHER) # pylint: disable=no-member
+    @APP.message('REPLY.PORT_STATS')
     @kill_on_exception(exc_logname)
     def port_stats_reply_handler(self, ryu_event):
         """Handle port stats reply event.
@@ -258,9 +242,9 @@ class Gauge(valve_ryuapp.RyuAppBase):
            ryu_event (ryu.controller.event.EventReplyBase): port stats event.
         """
         self._update_watcher(
-            ryu_event.msg.datapath, 'port_stats', ryu_event.msg)
+            ryu_event['datapath'], 'port_stats', ryu_event['msg'])
 
-    @set_ev_cls(ofp_event.EventOFPFlowStatsReply, MAIN_DISPATCHER) # pylint: disable=no-member
+    @APP.message('REPLY.FLOW')
     @kill_on_exception(exc_logname)
     def flow_stats_reply_handler(self, ryu_event):
         """Handle flow stats reply event.
@@ -269,4 +253,4 @@ class Gauge(valve_ryuapp.RyuAppBase):
            ryu_event (ryu.controller.event.EventReplyBase): flow stats event.
         """
         self._update_watcher(
-            ryu_event.msg.datapath, 'flow_table', ryu_event.msg)
+            ryu_event['datapath'], 'flow_table', ryu_event['msg'])
