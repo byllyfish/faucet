@@ -20,11 +20,6 @@
 
 import ipaddress
 
-import eventlet
-eventlet.monkey_patch()
-
-from ryu.lib import hub # pylint: disable=wrong-import-position
-
 from beka.beka import Beka # pylint: disable=wrong-import-position
 
 class FaucetBgp(object):
