@@ -20,10 +20,10 @@
 
 from urllib.parse import parse_qs
 
-from ryu.lib import hub
+#from ryu.lib import hub
 from pbr.version import VersionInfo
 from prometheus_client import Gauge as PromGauge
-from prometheus_client import generate_latest, CONTENT_TYPE_LATEST, REGISTRY
+from prometheus_client import generate_latest, start_http_server, CONTENT_TYPE_LATEST, REGISTRY
 
 
 # Ryu's WSGI implementation doesn't always set QUERY_STRING
@@ -76,5 +76,4 @@ class PromClient(object): # pylint: disable=too-few-public-methods
                 self.thread.daemon = True
                 self.thread.start()
             else:
-                self.server = hub.WSGIServer((prom_addr, int(prom_port)), app)
-                hub.spawn(self.server.serve_forever)
+                start_http_server(int(prom_port), prom_addr)
