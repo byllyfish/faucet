@@ -1,0 +1,21 @@
+FROM faucet/faucet-testbase:latest
+
+RUN apt-key adv --keyserver keyserver.ubuntu.com --recv-keys FFBE06FBB4EDC679174DD2CCD5AA2ED445128570 \
+    && echo "deb http://ppa.launchpad.net/byllyfish/oftr/ubuntu xenial main" >> /etc/apt/sources.list \
+    && apt-get update \
+    && apt-get install oftr \
+    && cd /root \
+    && git clone -b develop --single-branch --depth=1 https://github.com/byllyfish/zof.git \
+    && git clone -b port5 --single-branch --depth=1 https://github.com/byllyfish/faucet.git \
+    && cd /root/zof \
+    && python3 setup.py develop \
+    && cd /root/faucet \
+    && python3 setup.py develop \
+    && pip3 install bitstring
+
+RUN pip2 install ipaddress pyyaml concurrencytest packaging netifaces requests scapy exabgp psutil
+
+# Move tcpdump to work-around app-armor issue in privileged containers (xenial).
+RUN cp /usr/sbin/tcpdump /usr/local/sbin/tcpdump
+
+CMD ["/root/faucet/docker/zof-runtests.sh"]

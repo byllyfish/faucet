@@ -129,7 +129,7 @@ class ValvesManager(object):
                 for deleted_dp in deleted_dpids:
                     delete_dp(deleted_dp)
                     del self.valves[deleted_dp]
-            self.bgp.reset(self.valves)
+            #self.bgp.reset(self.valves)
 
     def request_reload_configs(self, new_config_file, delete_dp=None):
         """Process a request to load config changes."""
@@ -144,7 +144,7 @@ class ValvesManager(object):
         """Update metrics in all Valves."""
         for valve in list(self.valves.values()):
             valve.update_metrics(rate_limited=False)
-        self.bgp.update_metrics()
+        #self.bgp.update_metrics()
 
     def valve_flow_services(self, valve_service):
         """Call a method on all Valves and send any resulting flows."""
