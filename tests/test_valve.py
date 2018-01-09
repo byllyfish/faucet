@@ -26,15 +26,16 @@ import tempfile
 import shutil
 import socket
 
-from ryu.lib import mac
-from ryu.lib.packet import arp, ethernet, icmp, icmpv6, ipv4, ipv6, packet, vlan
-from ryu.ofproto import ether, inet
-from ryu.ofproto import ofproto_v1_3 as ofp
+from faucet.zof_constant import ofp, ipv4, ipv6, arp, mac, ether, inet, icmpv6
+from zof.pktview import make_pktview
+#from ryu.ofproto import ofproto_v1_3 as ofp
+#from ryu.lib.packet import ethernet, arp, vlan, ipv4, ipv6, packet
 
 from prometheus_client import CollectorRegistry
 
 from faucet import faucet_bgp
 from faucet import faucet_experimental_event
+
 from faucet import faucet_metrics
 from faucet import valve
 from faucet import valves_manager
@@ -61,61 +62,43 @@ def build_pkt(pkt):
 
     layers = []
     assert 'eth_dst' in pkt and 'eth_src' in pkt
-    ethertype = None
+    result = make_pktview(eth_src=pkt['eth_src'], eth_dst=pkt['eth_dst'])
     if 'arp_source_ip' in pkt and 'arp_target_ip' in pkt:
-        ethertype = ether.ETH_TYPE_ARP
-        arp_code = arp.ARP_REQUEST
-        if pkt['eth_dst'] == FAUCET_MAC:
-            arp_code = arp.ARP_REPLY
-        layers.append(arp.arp(
-            src_ip=pkt['arp_source_ip'], dst_ip=pkt['arp_target_ip'], opcode=arp_code))
+        result.eth_type = ether.ETH_TYPE_ARP
+        result.arp_tpa = pkt['arp_target_ip']
+        result.arp_op = arp.ARP_REQUEST
+        result.arp_spa = pkt['arp_source_ip']
     elif 'ipv6_src' in pkt and 'ipv6_dst' in pkt:
-        ethertype = ether.ETH_TYPE_IPV6
+        result.eth_type = ether.ETH_TYPE_IPV6
+        result.ipv6_src = pkt['ipv6_src']
+        result.ipv6_dst = pkt['ipv6_dst']
+        result.ip_proto = inet.IPPROTO_ICMPV6
+        result.ipv6_exthdr = 1
         if 'router_solicit_ip' in pkt:
-            layers.append(icmpv6.icmpv6(
-                type_=icmpv6.ND_ROUTER_SOLICIT))
+            result.icmpv6_type = icmpv6.ND_ROUTER_SOLICIT
         elif 'neighbor_advert_ip' in pkt:
-            layers.append(icmpv6.icmpv6(
-                type_=icmpv6.ND_NEIGHBOR_ADVERT,
-                data=icmpv6.nd_neighbor(
-                    dst=pkt['neighbor_advert_ip'],
-                    option=icmpv6.nd_option_sla(hw_src=pkt['eth_src']))))
+            result.icmpv6_type = icmpv6.ND_NEIGHBOR_ADVERT
+            result.ipv6_nd_target = pkt['neighbor_advert_ip']
+            result.ipv6_nd_sll = pkt['eth_src']
         elif 'neighbor_solicit_ip' in pkt:
-            layers.append(icmpv6.icmpv6(
-                type_=icmpv6.ND_NEIGHBOR_SOLICIT,
-                data=icmpv6.nd_neighbor(
-                    dst=pkt['neighbor_solicit_ip'],
-                    option=icmpv6.nd_option_sla(hw_src=pkt['eth_src']))))
+            result.icmpv6_type = icmpv6.ND_NEIGHBOR_SOLICIT
+            result.ipv6_nd_target = pkt['neighbor_solicit_ip']
+            result.ipv6_nd_sll = pkt['eth_src']
         elif 'echo_request_data' in pkt:
-            layers.append(icmpv6.icmpv6(
-                type_=icmpv6.ICMPV6_ECHO_REQUEST,
-                data=icmpv6.echo(id_=1, seq=1, data=pkt['echo_request_data'])))
-        layers.append(ipv6.ipv6(
-            src=pkt['ipv6_src'],
-            dst=pkt['ipv6_dst'],
-            nxt=inet.IPPROTO_ICMPV6))
+            result.icmpv6_type = icmpv6.ICMPV6_ECHO_REQUEST
+            result.payload = struct.pack('>HHs', 1, 1, pkt['echo_request_data'])
     elif 'ipv4_src' in pkt and 'ipv4_dst' in pkt:
-        ethertype = ether.ETH_TYPE_IP
-        proto = inet.IPPROTO_IP
+        result.eth_type = ether.ETH_TYPE_IP
+        result.ipv4_src = pkt['ipv4_src']
+        result.ipv4_dst = pkt['ipv4_dst']
         if 'echo_request_data' in pkt:
-            echo = icmp.echo(id_=1, seq=1, data=pkt['echo_request_data'])
-            layers.append(icmp.icmp(type_=icmp.ICMP_ECHO_REQUEST, data=echo))
-            proto = inet.IPPROTO_ICMP
-        net = ipv4.ipv4(src=pkt['ipv4_src'], dst=pkt['ipv4_dst'], proto=proto)
-        layers.append(net)
-    assert ethertype is not None, pkt
+            result.ip_proto = inet.IPPROTO_ICMP
+            result.icmpv4_type = icmp.ICMPV6_ECHO_REQUEST
+            result.payload = struct.pack('>HHs', 1, 1, pkt['echo_request_data'])
     if 'vid' in pkt:
-        tpid = ether.ETH_TYPE_8021Q
-        layers.append(vlan.vlan(vid=pkt['vid'], ethertype=ethertype))
-    else:
-        tpid = ethertype
-    eth = ethernet.ethernet(
-        dst=pkt['eth_dst'],
-        src=pkt['eth_src'],
-        ethertype=tpid)
-    layers.append(eth)
-    result = serialize(layers)
-    return result
+        result.vlan_vid = pkt['vid']
+    assert 'eth_type' in result, pkt
+    return (result, result.eth_type)
 
 
 class ValveTestBase(unittest.TestCase):
@@ -271,8 +254,7 @@ vlans:
         self.registry = CollectorRegistry()
         # TODO: verify Prometheus variables
         self.metrics = faucet_metrics.FaucetMetrics(reg=self.registry) # pylint: disable=unexpected-keyword-arg
-        # TODO: verify events
-        self.notifier = faucet_experimental_event.FaucetExperimentalEventNotifier(
+        self.notifier = zof_event_notifier.FaucetExperimentalEventNotifier(
             self.faucet_event_sock, self.metrics, self.logger)
         self.bgp = faucet_bgp.FaucetBgp(self.logger, self.metrics, self.send_flows_to_dp_by_id)
         self.valves_manager = valves_manager.ValvesManager(
