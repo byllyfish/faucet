@@ -87,14 +87,14 @@ class GaugePortStatsPrometheusPoller(GaugePortStatsPoller):
         formatted_port_stats = []
         for prom_var in PROM_PORT_VARS:
             stat_name = delim.join((PROM_PORT_PREFIX, prom_var))
-            stat_val = getattr(stat, prom_var)
+            stat_val = stat[prom_var]
             if stat_val != 2**64-1:
                 formatted_port_stats.append((stat_name, stat_val))
         return formatted_port_stats
 
     def update(self, rcv_time, dp_id, msg):
         super(GaugePortStatsPrometheusPoller, self).update(rcv_time, dp_id, msg)
-        for stat in msg.body:
+        for stat in msg:
             port_name = self._stat_port_name(msg, stat, dp_id)
             port_labels = dict(dp_id=hex(dp_id), dp_name=self.dp.name, port_name=port_name)
             for stat_name, stat_val in self._format_port_stats(
@@ -106,15 +106,34 @@ class GaugePortStatePrometheusPoller(GaugePortStatePoller):
     """Export port state changes to Prometheus."""
 
     def update(self, rcv_time, dp_id, msg):
+<<<<<<< HEAD
         super(GaugePortStatePrometheusPoller, self).update(rcv_time, dp_id, msg)
-        port_no = msg.desc.port_no
+        port_no = msg['port_no']
         if port_no in self.dp.ports:
             port_name = self.dp.ports[port_no].name
             port_labels = dict(dp_id=hex(dp_id), dp_name=self.dp.name, port_name=port_name)
             for prom_var in PROM_PORT_STATE_VARS:
                 exported_prom_var = PROM_PREFIX_DELIM.join((PROM_PORT_PREFIX, prom_var))
-                msg_value = msg.reason if prom_var == 'reason' else getattr(msg.desc, prom_var)
+                msg_value = self._get_prom_var(prom_var, msg)
                 self.prom_client.metrics[exported_prom_var].labels(**port_labels).set(msg_value)
+
+    @staticmethod
+    def _get_prom_var(prom_var, msg):
+        if prom_var == 'reason':
+            return _reason(msg[prom_var])
+        elif prom_var == 'state':
+            return _state(msg[prom_var])
+        else:
+            return msg[prom_var]
+
+    @staticmethod
+    def _reason(reason):
+        reasons = {'ADD': 1, 'DELETE': 2, 'MODIFY': 3}
+        return reasons.get(reason) or int(reason, 0)
+
+    @staticmethod
+    def _state(state):
+        return 1 if 'LINK_DOWN' in state else 0
 
 
 class GaugeFlowTablePrometheusPoller(GaugeFlowTablePoller):
@@ -124,9 +143,7 @@ class GaugeFlowTablePrometheusPoller(GaugeFlowTablePoller):
 
     def update(self, rcv_time, dp_id, msg):
         super(GaugeFlowTablePrometheusPoller, self).update(rcv_time, dp_id, msg)
-        jsondict = msg.to_jsondict()
-        for stats_reply in jsondict['OFPFlowStatsReply']['body']:
-            stats = stats_reply['OFPFlowStats']
+        for stats in msg:
             # TODO: labels based on matches will be dynamic
             # Work around this by unregistering/registering the entire variable.
             for var, tags, count in self._parse_flow_stats(stats):
