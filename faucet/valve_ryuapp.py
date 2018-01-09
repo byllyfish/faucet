@@ -18,26 +18,24 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import asyncio
 import logging
 import random
-import signal
-import sys
 
-from ryu.base import app_manager
-from ryu.controller import event
-from ryu.lib import hub
+import zof
 
 from faucet import valve_of
 from faucet.valve_util import get_logger, get_setting
 
 
-class EventReconfigure(event.EventBase):
-    """Event sent to controller to cause config reload."""
+class _DPSetAdapter:
+    """Adapt find_datapath to Ryu-like API."""
+    @staticmethod
+    def get(dp_id):
+        return zof.find_datapath(datapath_id=dp_id)
 
-    pass
 
-
-class RyuAppBase(app_manager.RyuApp):
+class RyuAppBase(object):
     """RyuApp base class for FAUCET/Gauge."""
 
     OFP_VERSIONS = valve_of.OFP_VERSIONS
@@ -46,7 +44,7 @@ class RyuAppBase(app_manager.RyuApp):
 
     def __init__(self, *args, **kwargs):
         super(RyuAppBase, self).__init__(*args, **kwargs)
-        self.dpset = kwargs['dpset']
+        self.dpset = _DPSetAdapter()
         self.config_file = self.get_setting('CONFIG', True)
         self.stat_reload = self.get_setting('CONFIG_STAT_RELOAD')
         loglevel = self.get_setting('LOG_LEVEL')
@@ -58,33 +56,18 @@ class RyuAppBase(app_manager.RyuApp):
             self.exc_logname, exc_logfile, logging.DEBUG, 1)
 
     @staticmethod
-    def _thread_jitter(period, jitter=3):
+    async def _thread_jitter(period, jitter=3):
         """Reschedule another thread with a random jitter."""
-        hub.sleep(period + random.randint(0, jitter))
+        await asyncio.sleep(period + random.randint(0, jitter))
 
     def get_setting(self, setting, path_eval=False):
         """Return config setting prefaced with logname."""
         return get_setting('_'.join((self.logname.upper(), setting)), path_eval)
 
-    def signal_handler(self, sigid, _):
-        """Handle signals.
-
-        Args:
-            sigid (int): signal received.
-        """
-        if sigid == signal.SIGINT:
-            self.close()
-            sys.exit(0)
-        if sigid == signal.SIGHUP:
-            self.send_event(self.__class__.__name__, EventReconfigure())
-
     def start(self):
         """Start controller."""
-        super(RyuAppBase, self).start()
 
         self.logger.info('Loaded configuration from %s', self.config_file)
 
         if self.stat_reload:
             self.logger.info('will automatically reload new config on changes')
-        signal.signal(signal.SIGHUP, self.signal_handler)
-        signal.signal(signal.SIGINT, self.signal_handler)

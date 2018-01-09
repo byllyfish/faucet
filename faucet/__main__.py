@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 """Launch forwarder script for Faucet/Gauge"""
 
@@ -21,6 +21,10 @@
 import argparse
 import os
 import sys
+
+import zof
+from zof.api_args import file_contents_type, _import_modules
+
 
 RYU_OPTIONAL_ARGS = [
     ('ca-certs', 'CA certificates'),
@@ -127,18 +131,67 @@ def main():
         ryu_args.append("--%s=%s" % (arg_name, val))
 
     # Running Faucet or Gauge?
+    apps = []
     if args.gauge or os.path.basename(sys.argv[0]) == 'gauge':
-        ryu_args.append('faucet.gauge')
+        apps.append('faucet.gauge')
     else:
-        ryu_args.append('faucet.faucet')
+        apps.append('faucet.faucet')
 
     # Check for additional Ryu apps.
     if args.ryu_app:
-        ryu_args.extend(args.ryu_app)
+        apps.extend(args.ryu_app)
+
+    if 'ryu.app.ofctl_rest' in apps:
+        apps.remove('ryu.app.ofctl_rest')
+    if 'test_experimental_api.py' in apps:
+        apps.remove('test_experimental_api.py')
+        apps.append('tests.test_experimental_api')
+
+    ryu_args.append('--x-modules=%s' % ','.join(apps))
 
     # Replace current process with ryu-manager from PATH (no PID change).
-    ryu_args.insert(0, 'ryu-manager')
-    os.execvp('ryu-manager', ryu_args)
+    run(ryu_args)
+
+
+def run(ryu_args):
+    """Run app."""
+    args = parse_ryu_args(ryu_args)
+    if args.wsapi_port:
+        from zof.demo.rest_api import APP as rest_app
+        rest_app.http_endpoint = '%s:%d' % (args.wsapi_host or '', args.wsapi_port)
+
+    # Map ryu arguments to framework's argument names.
+    args.listen_endpoints = ['%s:%d' % (args.ofp_listen_host, args.ofp_tcp_listen_port)]
+    args.listen_cert = args.ctl_cert
+    args.listen_cacert = args.ca_certs
+    args.listen_privkey = args.ctl_privkey
+    args.listen_versions = [4]
+    args.pidfile = args.pid_file
+    #args.x_oftr_args='--trace=rpc'
+    #args.loglevel='debug'
+    #print('args=%r' % args)
+    _import_modules(args.x_modules)
+    zof.run(args=args)
+
+
+def parse_ryu_args(ryu_args):
+    # Add RYU compatible arguments.
+    #import zof.demo.metrics
+    args = argparse.ArgumentParser(parents=[zof.common_args(include_x_modules=True)])
+    args.add_argument('--verbose', action='store_true')
+    args.add_argument('--use-stderr', action='store_true')
+    args.add_argument('--wsapi-host')
+    args.add_argument('--wsapi-port', type=int)
+    args.add_argument('--ofp-listen-host', default='')
+    args.add_argument('--ofp-tcp-listen-port', type=int, default=6653)
+    args.add_argument('--ctl-privkey', type=file_contents_type())
+    args.add_argument('--ctl-cert', type=file_contents_type())
+    args.add_argument('--ca-certs', type=file_contents_type())
+    args.add_argument('--pid-file')
+    args.add_argument('--config-file')
+    #metrics_endpoint = '%s:%s' % (get_setting('FAUCET_PROMETHEUS_ADDR'), get_setting('FAUCET_PROMETHEUS_PORT'))
+    #args.set_defaults(metrics_endpoint=metrics_endpoint)
+    return args.parse_args(ryu_args)
 
 
 if __name__ == '__main__':
