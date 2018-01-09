@@ -16,8 +16,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from faucet.valve_of import MATCH_FIELDS, OLD_MATCH_FIELDS
+#from faucet.valve_of import MATCH_FIELDS, OLD_MATCH_FIELDS
 from faucet.conf import Conf
+
+
+ALL_MATCH_FIELDS = '''\
+in_port in_phy_port metadata eth_dst eth_src
+eth_type vlan_vid vlan_pcp ip_dscp ip_ecn
+ip_proto ipv4_src ipv4_dst tcp_src tcp_dst
+udp_src udp_dst sctp_src sctp_dst icmpv4_type
+icmpv4_code arp_op arp_spa arp_tpa arp_sha
+arp_tha ipv6_src ipv6_dst ipv6_flabel icmpv6_type
+icmpv6_code ipv6_nd_target ipv6_nd_sll ipv6_nd_tll mpls_label
+mpls_tc mpls_bos pbb_isid tunnel_id ipv6_exthdr
+dl_dst dl_src dl_type dl_vlan nw_proto nw_src nw_dst'''.split()
 
 
 class ACL(Conf):
@@ -100,9 +112,8 @@ The output action contains a dictionary with the following elements:
             rules = conf['rules']
         self.rules = []
         assert isinstance(rules, list)
-        for match_fields in (MATCH_FIELDS, OLD_MATCH_FIELDS):
-            for match in list(match_fields.keys()):
-                self.rule_types[match] = (str, int)
+        for match in ALL_MATCH_FIELDS:
+            self.rule_types[match] = (str, int)
         for rule in rules:
             assert isinstance(rule, dict)
             for rule_key, rule_content in list(rule.items()):
