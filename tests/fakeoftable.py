@@ -14,9 +14,12 @@
 # limitations under the License.
 
 from bitstring import Bits
-from ryu.ofproto import ofproto_v1_3 as ofp
-from ryu.ofproto import ofproto_v1_3_parser as parser
-from ryu.lib import addrconv
+
+from faucet.zof_constant import ofp, mac, ipv4, ipv6
+from zof.pktview import pktview_from_list
+#from ryu.ofproto import ofproto_v1_3 as ofp
+#from ryu.ofproto import ofproto_v1_3_parser as parser
+#from ryu.lib import addrconv
 
 
 class FakeOFTable(object):
@@ -107,7 +110,7 @@ class FakeOFTable(object):
         Adds, Deletes and modify flow modification messages are applied
         according to section 6.4 of the OpenFlow 1.3 specification."""
         for ofmsg in ofmsgs:
-            if isinstance(ofmsg, parser.OFPFlowMod):
+            if ofmsg['type'] == 'FLOW_MOD':
                 self._apply_flowmod(ofmsg)
                 self.sort_tables()
 
@@ -143,14 +146,14 @@ class FakeOFTable(object):
             if matching_fte:
                 for instruction in matching_fte.instructions:
                     instructions.append(instruction)
-                    if instruction.type == ofp.OFPIT_GOTO_TABLE:
-                        if table_id < instruction.table_id:
-                            table_id = instruction.table_id
+                    if instruction['instruction'] == 'GOTO_TABLE':
+                        if table_id < instruction['table_id']:
+                            table_id = instruction['table_id']
                             goto_table = True
-                    elif instruction.type == ofp.OFPIT_APPLY_ACTIONS:
-                        for action in instruction.actions:
-                            if action.type == ofp.OFPAT_SET_FIELD:
-                                packet_dict[action.key] = action.value
+                    elif instruction['instruction'] == 'APPLY_ACTIONS':
+                        for action in instruction['actions']:
+                            if action['action'] == 'SET_FIELD':
+                                packet_dict[action['field'].lower()] = action['value']
         return instructions
 
     def is_output(self, match, port=None, vid=None):
@@ -180,21 +183,21 @@ class FakeOFTable(object):
         instructions = self.lookup(match)
 
         for instruction in instructions:
-            if instruction.type == ofp.OFPIT_APPLY_ACTIONS:
-                for action in instruction.actions:
-                    if action.type == ofp.OFPAT_PUSH_VLAN:
+            if instruction['instruction'] == 'APPLY_ACTIONS':
+                for action in instruction['actions']:
+                    if action['action'] == 'PUSH_VLAN':
                         vid_stack.append(ofp.OFPVID_PRESENT)
-                    elif action.type == ofp.OFPAT_POP_VLAN:
+                    elif action['action'] == 'POP_VLAN':
                         vid_stack.pop()
-                    elif action.type == ofp.OFPAT_SET_FIELD:
-                        if action.key == 'vlan_vid':
-                            vid_stack[-1] = action.value
+                    elif action['action'] == 'SET_FIELD':
+                        if action['field'].lower() == 'vlan_vid':
+                            vid_stack[-1] = action['value']
                         else:
                             continue
-                    elif action.type == ofp.OFPAT_OUTPUT:
+                    elif action['action'] == 'OUTPUT':
                         if port is None:
                             return True
-                        if action.port == port:
+                        if action['port_no'] == port:
                             if vid is None:
                                 return True
                             if vid & ofp.OFPVID_PRESENT == 0:
@@ -228,16 +231,16 @@ class FlowMod(object):
 
     def __init__(self, flowmod):
         """flowmod is a ryu flow modification message object"""
-        self.priority = flowmod.priority
-        self.instructions = flowmod.instructions
+        self.priority = flowmod['priority']
+        self.instructions = flowmod['instructions']
         self.match_values = {}
         self.match_masks = {}
         self.out_port = None
-        if ((flowmod.command == ofp.OFPFC_DELETE or flowmod.command == ofp.OFPFC_DELETE_STRICT) and
-                flowmod.out_port != ofp.OFPP_ANY):
-            self.out_port = flowmod.out_port
+        if ((flowmod['command'] == ofp.OFPFC_DELETE or flowmod['command'] == ofp.OFPFC_DELETE_STRICT) and
+                flowmod['out_port'] != ofp.OFPP_ANY):
+            self.out_port = flowmod['out_port']
 
-        for key, val in flowmod.match.items():
+        for key, val in pktview_from_list(flowmod['match']).items():
             if isinstance(val, tuple):
                 val, mask = val
             else:
@@ -254,10 +257,10 @@ class FlowMod(object):
         if self.out_port is None or self.out_port == ofp.OFPP_ANY:
             return True
         for instruction in other.instructions:
-            if instruction.type == ofp.OFPIT_APPLY_ACTIONS:
-                for action in instruction.actions:
-                    if action.type == ofp.OFPAT_OUTPUT:
-                        if action.port == self.out_port:
+            if instruction['instruction'] == 'APPLY_ACTIONS':
+                for action in instruction['actions']:
+                    if action['action'] == 'OUTPUT':
+                        if action['port_no'] == self.out_port:
                             return True
         return False
 
@@ -339,11 +342,11 @@ class FlowMod(object):
             return Bits(bytes=conv(val), length=length)
 
         if key in self.MAC_MATCH_FIELDS:
-            return _val_to_bits(addrconv.mac.text_to_bin, val, 48)
+            return _val_to_bits(mac.text_to_bin, val, 48)
         elif key in self.IPV4_MATCH_FIELDS:
-            return _val_to_bits(addrconv.ipv4.text_to_bin, val, 32)
+            return _val_to_bits(ipv4.text_to_bin, val, 32)
         elif key in self.IPV6_MATCH_FIELDS:
-            return _val_to_bits(addrconv.ipv6.text_to_bin, val, 128)
+            return _val_to_bits(ipv6.text_to_bin, val, 128)
         else:
             val = Bits(int=int(val), length=64)
         return val
