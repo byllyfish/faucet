@@ -27,15 +27,12 @@ import unittest
 import tempfile
 import shutil
 import socket
+import asyncio
+import struct
 import time
 
-from ryu.controller import dpset
-from ryu.controller.ofp_event import EventOFPMsgBase
-from ryu.lib import mac
-from ryu.lib.packet import arp, ethernet, icmp, icmpv6, ipv4, ipv6, lldp, slow, packet, vlan
-from ryu.ofproto import ether, inet
-from ryu.ofproto import ofproto_v1_3 as ofp
-from ryu.ofproto import ofproto_v1_3_parser as parser
+from zof.pktview import make_pktview
+from zof.datapath import Port
 
 from prometheus_client import CollectorRegistry
 
@@ -49,11 +46,17 @@ from faucet import valve_of
 from faucet import valve_packet
 from faucet import valve_util
 from faucet.valve import TfmValve
+from faucet.zof_constant import ofp, arp, mac, ether, inet, icmp, icmpv6, slow, lldp
 
 from beka.route import RouteAddition, RouteRemoval
 from beka.ip import IPAddress, IPPrefix
 
 from fakeoftable import FakeOFTable
+
+def _run_sync(coro):
+    """Hack to run coroutine functions synchronously inline."""
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(coro)
 
 
 FAUCET_MAC = '0e:00:00:00:00:01'
@@ -202,61 +205,50 @@ vlans:
 def build_pkt(pkt):
     """Build and return a packet and eth type from a dict."""
 
-    def serialize(layers):
-        """Concatenate packet layers and serialize."""
-        result = packet.Packet()
-        for layer in reversed(layers):
-            result.add_protocol(layer)
-        result.serialize()
-        return result
-
-    layers = []
     assert 'eth_dst' in pkt and 'eth_src' in pkt
-    ethertype = None
+    result = make_pktview()
     if 'arp_source_ip' in pkt and 'arp_target_ip' in pkt:
-        ethertype = ether.ETH_TYPE_ARP
-        arp_code = arp.ARP_REQUEST
+        result.eth_type = ether.ETH_TYPE_ARP
+        result.arp_op = arp.ARP_REQUEST
         if pkt['eth_dst'] == FAUCET_MAC:
-            arp_code = arp.ARP_REPLY
-        layers.append(arp.arp(
-            src_ip=pkt['arp_source_ip'], dst_ip=pkt['arp_target_ip'], opcode=arp_code))
+            result.arp_op = arp.ARP_REPLY
+        result.arp_spa = pkt['arp_source_ip']
+        result.arp_tpa = pkt['arp_target_ip']
     elif 'ipv6_src' in pkt and 'ipv6_dst' in pkt:
-        ethertype = ether.ETH_TYPE_IPV6
+        result.eth_type = ether.ETH_TYPE_IPV6
         if 'router_solicit_ip' in pkt:
-            layers.append(icmpv6.icmpv6(
-                type_=icmpv6.ND_ROUTER_SOLICIT))
+            result.icmpv6_type = icmpv6.ND_ROUTER_SOLICIT
+            result.hop_limit = 255
         elif 'neighbor_advert_ip' in pkt:
-            layers.append(icmpv6.icmpv6(
-                type_=icmpv6.ND_NEIGHBOR_ADVERT,
-                data=icmpv6.nd_neighbor(
-                    dst=pkt['neighbor_advert_ip'],
-                    option=icmpv6.nd_option_sla(hw_src=pkt['eth_src']))))
+            result.icmpv6_type = icmpv6.ND_NEIGHBOR_ADVERT
+            result.ipv6_nd_target = pkt['neighbor_advert_ip']
+            result.ipv6_nd_sll = pkt['eth_src']
+            result.hop_limit = 255
         elif 'neighbor_solicit_ip' in pkt:
-            layers.append(icmpv6.icmpv6(
-                type_=icmpv6.ND_NEIGHBOR_SOLICIT,
-                data=icmpv6.nd_neighbor(
-                    dst=pkt['neighbor_solicit_ip'],
-                    option=icmpv6.nd_option_sla(hw_src=pkt['eth_src']))))
+            result.icmpv6_type = icmpv6.ND_NEIGHBOR_SOLICIT
+            result.ipv6_nd_target = pkt['neighbor_solicit_ip']
+            result.ipv6_nd_sll = pkt['eth_src']
+            result.hop_limit = 255
         elif 'echo_request_data' in pkt:
-            layers.append(icmpv6.icmpv6(
-                type_=icmpv6.ICMPV6_ECHO_REQUEST,
-                data=icmpv6.echo(id_=1, seq=1, data=pkt['echo_request_data'])))
-        layers.append(ipv6.ipv6(
-            src=pkt['ipv6_src'],
-            dst=pkt['ipv6_dst'],
-            nxt=inet.IPPROTO_ICMPV6))
+            result.icmpv6_type = icmpv6.ICMPV6_ECHO_REQUEST
+            result.hop_limit = 64
+            result.payload = struct.pack('>HHs', 1, 1, pkt['echo_request_data'])
+        result.ipv6_src = pkt['ipv6_src']
+        result.ipv6_dst = pkt['ipv6_dst']
+        result.ip_proto = inet.IPPROTO_ICMPV6
+        result.ipv6_exthdr = 1
     elif 'ipv4_src' in pkt and 'ipv4_dst' in pkt:
-        ethertype = ether.ETH_TYPE_IP
-        proto = inet.IPPROTO_IP
+        result.eth_type = ether.ETH_TYPE_IP
+        result.ip_proto = inet.IPPROTO_IP
         if 'echo_request_data' in pkt:
-            echo = icmp.echo(id_=1, seq=1, data=pkt['echo_request_data'])
-            layers.append(icmp.icmp(type_=icmp.ICMP_ECHO_REQUEST, data=echo))
-            proto = inet.IPPROTO_ICMP
-        net = ipv4.ipv4(src=pkt['ipv4_src'], dst=pkt['ipv4_dst'], proto=proto)
-        layers.append(net)
+            result.ip_proto = inet.IPPROTO_ICMP
+            result.icmpv4_type = icmp.ICMP_ECHO_REQUEST
+            result.payload = struct.pack('>HHs', 1, 1, pkt['echo_request_data'])
+        result.ipv4_src = pkt['ipv4_src']
+        result.ipv4_dst = pkt['ipv4_dst']
     elif 'actor_system' in pkt and 'partner_system' in pkt:
-        ethertype = ether.ETH_TYPE_SLOW
-        layers.append(slow.lacp(
+        result.eth_type = ether.ETH_TYPE_SLOW
+        result.payload = valve_packet.lacp_payload(
             version=1,
             actor_system=pkt['actor_system'],
             actor_port=1,
@@ -283,23 +275,15 @@ def build_pkt(pkt):
             actor_state_synchronization=1,
             partner_state_synchronization=1,
             actor_state_activity=0,
-            partner_state_activity=0))
+            partner_state_activity=0)
     elif 'chassis_id' in pkt and 'port_id' in pkt:
-        ethertype = ether.ETH_TYPE_LLDP
         return valve_packet.lldp_beacon(
             pkt['eth_src'], pkt['chassis_id'], str(pkt['port_id']), 1)
-    assert ethertype is not None, pkt
+    assert 'eth_type' in result, result
     if 'vid' in pkt:
-        tpid = ether.ETH_TYPE_8021Q
-        layers.append(vlan.vlan(vid=pkt['vid'], ethertype=ethertype))
-    else:
-        tpid = ethertype
-    eth = ethernet.ethernet(
-        dst=pkt['eth_dst'],
-        src=pkt['eth_src'],
-        ethertype=tpid)
-    layers.append(eth)
-    result = serialize(layers)
+        result.vlan_vid = pkt['vid']
+    result.eth_src = pkt['eth_src']
+    result.eth_dst = pkt['eth_dst']
     return result
 
 
@@ -356,7 +340,7 @@ class ValveTestBases:
                 self.LOGNAME, self.logger, self.metrics, self.notifier,
                 self.bgp, self.send_flows_to_dp_by_id)
             self.last_flows_to_dp[self.DP_ID] = []
-            self.notifier.start()
+            _run_sync(self.notifier.start())
             self.update_config(config)
             self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             self.sock.connect(self.faucet_event_sock)
@@ -369,6 +353,7 @@ class ValveTestBases:
             for valve in list(self.valves_manager.valves.values()):
                 valve.close_logs()
             self.sock.close()
+            self.notifier.stop()
             shutil.rmtree(self.tmpdir)
 
         def tearDown(self):
@@ -414,18 +399,12 @@ class ValveTestBases:
             """Call DP connect and set all ports to up."""
             discovered_ports = []
             for port_no in range(1, self.NUM_PORTS + 1):
-                ofpport = parser.OFPPort(
-                    port_no=port_no,
-                    hw_addr=None,
-                    name=str(port_no),
-                    config=0,
-                    state=0,
-                    curr=0,
-                    advertised=0,
-                    supported=0,
-                    peer=0,
-                    curr_speed=1e6,
-                    max_speed=1e6)
+                ofpport = Port(port_no, None)
+                ofpport.name = str(port_no)
+                ofpport.state = []
+                ofpport.config = []
+                ofpport.curr_speed = 1e6
+                ofpport.max_speed = 1e6
                 discovered_ports.append(ofpport)
             self.table.apply_ofmsgs(self.valve.datapath_connect(time.time(), discovered_ports))
             for port in discovered_ports:
@@ -435,12 +414,12 @@ class ValveTestBases:
         def set_port_down(self, port_no):
             """Set port status of port to down."""
             self.table.apply_ofmsgs(self.valve.port_status_handler(
-                port_no, ofp.OFPPR_DELETE, ofp.OFPPS_LINK_DOWN))
+                port_no, ofp.OFPPR_DELETE, ['LINK_DOWN']))
 
         def set_port_up(self, port_no):
             """Set port status of port to up."""
             self.table.apply_ofmsgs(self.valve.port_status_handler(
-                port_no, ofp.OFPPR_ADD, 0))
+                port_no, ofp.OFPPR_ADD, []))
 
         def flap_port(self, port_no):
             """Flap op status on a port."""
@@ -450,7 +429,7 @@ class ValveTestBases:
         @staticmethod
         def packet_outs_from_flows(flows):
             """Return flows that are packetout actions."""
-            return [flow for flow in flows if isinstance(flow, valve_of.parser.OFPPacketOut)]
+            return [flow for flow in flows if flow['type'] == 'PACKET_OUT']
 
         def learn_hosts(self):
             """Learn some hosts."""
@@ -565,14 +544,15 @@ class ValveTestBases:
                 vlan_match = match
                 vlan_match['vid'] = vid
                 vlan_pkt = build_pkt(match)
-            msg = namedtuple(
-                'null_msg',
-                ('match', 'in_port', 'data', 'total_len', 'cookie', 'reason'))
-            msg.reason = valve_of.ofp.OFPR_ACTION
-            msg.data = vlan_pkt.data
-            msg.total_len = len(msg.data)
-            msg.match = {'in_port': port}
-            msg.cookie = self.valve.dp.cookie
+            msg = dict(
+                reason=valve_of.ofp.OFPR_ACTION,
+                data=b'',
+                total_len=0,
+                pkt=vlan_pkt,
+                in_port=port,
+                match={'in_port': port},
+                cookie=self.valve.dp.cookie
+            )
             pkt_meta = self.valve.parse_pkt_meta(msg)
             self.assertTrue(pkt_meta, msg=pkt)
             self.last_flows_to_dp[self.DP_ID] = []
@@ -622,10 +602,10 @@ class ValveTestBases:
         def test_oferror(self):
             """Test OFError handler."""
             datapath = None
-            msg = valve_of.parser.OFPFlowMod(datapath=datapath)
-            msg.xid = 123
+            msg = {'type': 'FLOW_MOD', 'datapath': datapath}
+            msg['xid'] = 123
             self.valve.recent_ofmsgs.append(msg)
-            test_error = valve_of.parser.OFPErrorMsg(datapath=datapath, msg=msg)
+            test_error = {'type': 'ERROR', 'datapath': datapath, 'xid': 123, 'msg': msg}
             self.valve.oferror(test_error)
 
         def test_switch_features(self):
@@ -634,23 +614,21 @@ class ValveTestBases:
                 isinstance(self.valve, TfmValve),
                 msg=type(self.valve))
             features_flows = self.valve.switch_features(None)
-            tfm_flows = [
-                flow for flow in features_flows if isinstance(
-                    flow, valve_of.parser.OFPTableFeaturesStatsRequest)]
+            tfm_flows = [flow for flow in features_flows if flow['type'] == 'REQUEST.TABLE_FEATURES']
             # TODO: verify TFM content.
             self.assertTrue(tfm_flows)
 
         def test_pkt_meta(self):
             """Test bad fields in OFPacketIn."""
-            msg = parser.OFPPacketIn(datapath=None)
+            msg = {'cookie': None, 'reason': None, 'in_port': None}
             self.assertEqual(None, self.valve.parse_pkt_meta(msg))
-            msg.cookie = self.valve.dp.cookie
+            msg['cookie'] = self.valve.dp.cookie
             self.assertEqual(None, self.valve.parse_pkt_meta(msg))
-            msg.reason = valve_of.ofp.OFPR_ACTION
+            msg['reason'] = valve_of.ofp.OFPR_ACTION
             self.assertEqual(None, self.valve.parse_pkt_meta(msg))
-            msg.match = parser.OFPMatch(in_port=1)
+            msg['match'] = [{'field': 'IN_PORT', 'value': None}]
             self.assertEqual(None, self.valve.parse_pkt_meta(msg))
-            msg.data = b'1234'
+            msg['data'] = b'1234'
             self.assertEqual(None, self.valve.parse_pkt_meta(msg))
 
         def test_loop_protect(self):
@@ -1193,17 +1171,16 @@ meters:
 
         def test_port_modify(self):
             """Set port status modify."""
-            for port_status in (0, 1):
+            for port_status in (['LINK_DOWN'], []):
                 self.table.apply_ofmsgs(self.valve.port_status_handler(
                     1, ofp.OFPPR_MODIFY, port_status))
 
         def test_unknown_port_status(self):
             """Test unknown port status message."""
-            known_messages = set([ofp.OFPPR_MODIFY, ofp.OFPPR_ADD, ofp.OFPPR_DELETE])
-            unknown_messages = list(set(range(0, len(known_messages) + 1)) - known_messages)
+            unknown_messages = ['0x09']
             self.assertTrue(unknown_messages)
             self.assertFalse(self.valve.port_status_handler(
-                1, unknown_messages[0], 1))
+                1, unknown_messages[0], []))
 
         def test_move_port(self):
             """Test host moves a port."""
@@ -1248,19 +1225,19 @@ meters:
 
         def test_ofdescstats_handler(self):
             """Test OFDescStatsReply handler."""
-            body = parser.OFPDescStats(
-                mfr_desc=u'test_mfr_desc'.encode(),
-                hw_desc=u'test_hw_desc'.encode(),
-                sw_desc=u'test_sw_desc'.encode(),
-                serial_num=u'99'.encode(),
-                dp_desc=u'test_dp_desc'.encode())
+            body = dict(
+                mfr_desc='test_mfr_desc',
+                hw_desc='test_hw_desc',
+                sw_desc='test_sw_desc',
+                serial_num='99',
+                dp_desc='test_dp_desc')
             self.valve.ofdescstats_handler(body)
-            invalid_body = parser.OFPDescStats(
-                mfr_desc=b'\x80',
-                hw_desc=b'test_hw_desc',
-                sw_desc=b'test_sw_desc',
-                serial_num=b'99',
-                dp_desc=b'test_dp_desc')
+            invalid_body = dict(
+                mfr_desc='\ufffd',
+                hw_desc='test_hw_desc',
+                sw_desc='test_sw_desc',
+                serial_num='99',
+                dp_desc='test_dp_desc')
             self.valve.ofdescstats_handler(invalid_body)
 
 
@@ -1803,9 +1780,9 @@ class RyuAppSmokeTest(unittest.TestCase):
         ryu_app.metric_update(None)
         ryu_app.get_config()
         ryu_app.get_tables(0)
-        event_dp = dpset.EventDPReconnected(dp=self._fake_dp())
-        for enter in (True, False):
-            event_dp.enter = enter
+        event_dp = {'datapath': self._fake_dp()}
+        for enter in ('CHANNEL_UP', 'CHANNEL_DOWN'):
+            event_dp['type'] = enter
             ryu_app.connect_or_disconnect_handler(event_dp)
         for event_handler in (
                 ryu_app.error_handler,
@@ -1820,8 +1797,8 @@ class RyuAppSmokeTest(unittest.TestCase):
             msg = namedtuple('msg', 'datapath')
             datapath = self._fake_dp()
             msg.datapath = datapath
-            event = EventOFPMsgBase(msg=msg)
-            event.dp = datapath
+            event = {'type': '', 'msg': msg}
+            event['datapath'] = datapath
             event_handler(event)
 
 
