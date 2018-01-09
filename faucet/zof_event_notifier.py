@@ -7,7 +7,7 @@
 
 # TODO: events are currently schema-less. This is to facilitate rapid prototyping, and will change.
 # TODO: not all cases where a notified client fails or could block, have been tested.
-# only one client is supported (multiple clients should be implemented with a client that copies/pushes to a message bus)
+# TODO: only one client is supported (multiple clients should be implemented with a client that copies/pushes to a message bus)
 
 # Copyright (C) 2013 Nippon Telegraph and Telephone Corporation.
 # Copyright (C) 2015 Brad Cowie, Christopher Lorier and Joe Stringer.
@@ -26,11 +26,52 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import json
-import os
-import queue
 import time
-import asyncio 
+import json
+import asyncio
+import os
+
+
+class _NotifierProtocol(asyncio.Protocol):
+
+    def __init__(self, notifier):
+        self.notifier = notifier
+        self.transport = None
+        self.can_write = True
+
+    def connection_made(self, transport):
+        self.notifier.logger.info('event client connected')
+        transport.set_write_buffer_limits(8192)
+        self.transport = transport
+        self.notifier.writers.append(self)
+
+    def connection_lost(self, exc):
+        self.notifier.logger.info('event client disconnected')
+        try:
+            self.notifier.writers.remove(self)
+        except ValueError:
+            pass
+    
+    def eof_received(self):
+        """Override eof_received to support half-open (write-only) connection.
+
+        By returning True, we are telling asyncio NOT to close the connection
+        when the read side is closed.
+        """
+        return True
+
+    def pause_writing(self):
+        self.can_write = False
+
+    def resume_writing(self):
+        self.can_write = True
+
+    def write(self, data):
+        if self.can_write:
+            self.transport.write(data)
+
+    def close(self):
+        self.transport.close()
 
 
 class FaucetExperimentalEventNotifier(object):
@@ -39,54 +80,31 @@ class FaucetExperimentalEventNotifier(object):
     def __init__(self, socket_path, metrics, logger):
         self.metrics = metrics
         self.logger = logger
-        self.event_q = queue.Queue(120)
         self.event_id = 0
-        self.thread = None
-        self.socket_path = self.check_path(socket_path)
         self.server = None
+        self.writers = []
+        self.socket_path = self.check_path(socket_path)
 
     async def start(self):
         """Start socket server."""
-        if self.socket_path:
-            self.server = await asyncio.start_unix_server(self._loop_entry, self.socket_path)
-            return self.server
-
-        return None
-
-    async def _loop(self, sock):
-        """Serve events."""
-        while True:
-            while not self.event_q.empty():
-                event = self.event_q.get()
-                event_bytes = bytes('\n'.join((json.dumps(event), '')).encode('UTF-8'))
-                try:
-                    sock.write(event_bytes)
-                    await sock.drain()
-                except ConnectionError:
-                    return
-            await asyncio.sleep(0.1)
+        if not self.socket_path:
+            return
+        self.logger.info('event socket listening on %s', self.socket_path)
+        loop = asyncio.get_event_loop()
+        self.server = await loop.create_unix_server(lambda: _NotifierProtocol(self), self.socket_path)
 
     def stop(self):
         """Stop socket server."""
-        if self.server:
-            self.server.close()
-        if self.thread:
-            self.thread.cancel()
-
-    async def _loop_entry(self, _reader, sock):
-        """Wrap _loop to track async thread."""
-        if self.thread:
-            self.logger.error('multiple event clients not supported')
-            sock.close()
+        if not self.socket_path:
             return
-        self.thread = asyncio.Task.current_task()
-        self.logger.info('event client connected')
-        try:
-            return await self._loop(sock)
-        finally:
-            self.logger.info('event client disconnected')
-            sock.close()
-            self.thread = None
+        self.server.close()
+        for writer in self.writers:
+            writer.close()
+        self.writers = []
+
+    def publish(self, data):
+        for writer in self.writers:
+            writer.write(data)
 
     def notify(self, dp_id, dp_name, event_dict):
         """Notify of an event."""
@@ -99,14 +117,11 @@ class FaucetExperimentalEventNotifier(object):
             'dp_name': dp_name,
             'event_id': self.event_id,
         }
-        for header_key in list(event):
-            assert header_key not in event_dict
+        assert not any(key in event_dict for key in event)
         event.update(event_dict)
-        if self.thread:
-            self.metrics.faucet_event_id.set(event['event_id'])
-            if self.event_q.full():
-                self.event_q.get()
-            self.event_q.put(event)
+        if self.socket_path:
+            self.metrics.faucet_event_id.set(self.event_id)
+            self.publish((json.dumps(event) + '\n').encode('UTF-8'))
 
     def check_path(self, socket_path):
         """Check that socket_path is valid."""

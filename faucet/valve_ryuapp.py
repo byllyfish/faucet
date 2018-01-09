@@ -18,16 +18,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import asyncio
 import logging
 import random
+import zof
 
-from ryu.base import app_manager
-from ryu.lib import hub
 from faucet import valve_of
 from faucet.valve_util import get_logger, get_setting
 
 
-class RyuAppBase(app_manager.RyuApp):
+class _DPSetAdapter:
+    """Adapt find_datapath to Ryu-like API."""
+    @staticmethod
+    def get(dp_id):
+        return zof.find_datapath(datapath_id=dp_id)
+
+
+class RyuAppBase(object):
     """RyuApp base class for FAUCET/Gauge."""
 
     OFP_VERSIONS = valve_of.OFP_VERSIONS
@@ -36,7 +43,7 @@ class RyuAppBase(app_manager.RyuApp):
 
     def __init__(self, *args, **kwargs):
         super(RyuAppBase, self).__init__(*args, **kwargs)
-        self.dpset = kwargs['dpset']
+        self.dpset = _DPSetAdapter()
         self.config_file = self.get_setting('CONFIG')
         self.stat_reload = self.get_setting('CONFIG_STAT_RELOAD')
         loglevel = self.get_setting('LOG_LEVEL')
@@ -48,9 +55,9 @@ class RyuAppBase(app_manager.RyuApp):
             self.exc_logname, exc_logfile, logging.DEBUG, 1)
 
     @staticmethod
-    def _thread_jitter(period, jitter=3):
+    async def _thread_jitter(period, jitter=3):
         """Reschedule another thread with a random jitter."""
-        hub.sleep(period + random.randint(0, jitter))
+        await asyncio.sleep(period + random.randint(0, jitter))
 
     def get_setting(self, setting):
         """Return config setting prefaced with logname."""
