@@ -18,66 +18,29 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from ryu.controller.handler import CONFIG_DISPATCHER
-from ryu.controller.handler import MAIN_DISPATCHER
-from ryu.controller.handler import set_ev_cls
-from ryu.controller import dpset
-from ryu.controller import event
-from ryu.controller import ofp_event
-from ryu.lib import hub
+import functools
+import zof
 
 from faucet.config_parser import get_config_for_api
-from faucet.valve_ryuapp import EventReconfigure, RyuAppBase
+from faucet.valve_ryuapp import RyuAppBase
 from faucet.valve_util import dpid_log, kill_on_exception
 from faucet import faucet_experimental_api
 from faucet import faucet_experimental_event
-from faucet import faucet_bgp
+#from faucet import faucet_bgp
 from faucet import valves_manager
 from faucet import faucet_metrics
 from faucet import valve_of
 
 
-class EventFaucetExperimentalAPIRegistered(event.EventBase):
-    """Event used to notify that the API is registered with Faucet."""
-    pass
+APP = zof.Application('faucet')
 
-
-class EventFaucetResolveGateways(event.EventBase):
-    """Event used to trigger gateway re/resolution."""
-    pass
-
-
-class EventFaucetStateExpire(event.EventBase):
-    """Event used to trigger expiration of state in controller."""
-    pass
-
-
-class EventFaucetMetricUpdate(event.EventBase):
-    """Event used to trigger update of metrics."""
-    pass
-
-
-class EventFaucetAdvertise(event.EventBase):
-    """Event used to trigger periodic network advertisements (eg IPv6 RAs)."""
-    pass
-
-
-class EventFaucetLLDPAdvertise(event.EventBase):
-    """Event used to trigger periodic LLDP beacons."""
-    pass
-
-
+@APP.bind()
 class Faucet(RyuAppBase):
     """A RyuApp that implements an L2/L3 learning VLAN switch.
 
     Valve provides the switch implementation; this is a shim for the Ryu
     event handling framework to interface with Valve.
     """
-    _CONTEXTS = {
-        'dpset': dpset.DPSet,
-        'faucet_experimental_api': faucet_experimental_api.FaucetExperimentalAPI,
-        }
-    _EVENTS = [EventFaucetExperimentalAPIRegistered]
     logname = 'faucet'
     exc_logname = logname + '.exception'
     bgp = None
@@ -87,17 +50,18 @@ class Faucet(RyuAppBase):
 
     def __init__(self, *args, **kwargs):
         super(Faucet, self).__init__(*args, **kwargs)
-        self.api = kwargs['faucet_experimental_api']
+        self.api = faucet_experimental_api.FaucetExperimentalAPI()
         self.metrics = faucet_metrics.FaucetMetrics(reg=self._reg)
-        self.bgp = faucet_bgp.FaucetBgp(self.logger, self.metrics, self._send_flow_msgs)
+        self.bgp = None   #faucet_bgp.FaucetBgp(self.logger, self.metrics, self._send_flow_msgs)
         self.notifier = faucet_experimental_event.FaucetExperimentalEventNotifier(
             self.get_setting('EVENT_SOCK'), self.metrics, self.logger)
         self.valves_manager = valves_manager.ValvesManager(
             self.logname, self.logger, self.metrics, self.notifier, self.bgp, self._send_flow_msgs)
 
+    @APP.event('START')
     @kill_on_exception(exc_logname)
-    def start(self):
-        super(Faucet, self).start()
+    async def start(self, _event):
+        await super().start(_event)
 
         # Start Prometheus
         prom_port = int(self.get_setting('PROMETHEUS_PORT'))
@@ -105,20 +69,25 @@ class Faucet(RyuAppBase):
         self.metrics.start(prom_port, prom_addr)
 
         # Start event notifier
-        notifier_thread = self.notifier.start()
-        if notifier_thread is not None:
-            self.threads.append(notifier_thread)
+        await self.notifier.start()
 
         # Start all threads
-        self.threads.extend([
-            hub.spawn(thread) for thread in (
-                self._gateway_resolve_request, self._state_expire_request,
-                self._metric_update_request, self._advertise_request,
-                self._lldp_beacon_request)])
+        for service, period in (
+                ('resolve_gateways', 2), 
+                ('state_expire', 5),
+                ('advertise', 5),
+                ('lldp_beacon', 5)):
+            func = functools.partial(self._valve_flow_services, service)
+            zof.ensure_future(self._thread_reschedule(func, period))
 
         # Register to API
         self.api._register(self)
-        self.send_event_to_observers(EventFaucetExperimentalAPIRegistered())
+        zof.post_event({'event': 'FAUCET_API_READY', 'faucet_api': self.api})
+
+    @APP.event('STOP')
+    @kill_on_exception(exc_logname)
+    def stop(self, _):
+        self.notifier.stop()
 
     def _delete_deconfigured_dp(self, deleted_dpid):
         self.logger.info(
@@ -127,7 +96,12 @@ class Faucet(RyuAppBase):
         if ryu_dp is not None:
             ryu_dp.close()
 
-    @set_ev_cls(EventReconfigure, MAIN_DISPATCHER)
+    @kill_on_exception(exc_logname)
+    def _load_configs(self, new_config_file):
+        self.valves_manager.load_configs(
+            new_config_file, delete_dp=self._delete_deconfigured_dp)
+
+    @APP.event('RECONFIGURE')
     @kill_on_exception(exc_logname)
     def reload_config(self, ryu_event):
         """Handle a request to reload configuration."""
@@ -169,42 +143,10 @@ class Faucet(RyuAppBase):
     def _config_files_changed(self):
         return self.valves_manager.config_watcher.files_changed()
 
-    def _metric_update_request(self):
-        self._thread_reschedule(EventFaucetMetricUpdate(), 5)
-
-    @set_ev_cls(EventFaucetMetricUpdate, MAIN_DISPATCHER)
     @kill_on_exception(exc_logname)
-    def metric_update(self, _):
-        """Handle a request to update metrics in the controller."""
-        self.valves_manager.update_metrics()
-
-    def _gateway_resolve_request(self):
-        self._thread_reschedule(EventFaucetResolveGateways(), 2)
-
-    def _state_expire_request(self):
-        self._thread_reschedule(EventFaucetStateExpire(), 5)
-
-    def _advertise_request(self):
-        self._thread_reschedule(EventFaucetAdvertise(), 5)
-
-    def _lldp_beacon_request(self):
-        self._thread_reschedule(EventFaucetLLDPAdvertise(), 5)
-
-    _VALVE_SERVICES = {
-        EventFaucetResolveGateways: 'resolve_gateways',
-        EventFaucetStateExpire: 'state_expire',
-        EventFaucetAdvertise: 'advertise',
-        EventFaucetLLDPAdvertise: 'send_lldp_beacons',
-    }
-
-    @set_ev_cls(EventFaucetResolveGateways, MAIN_DISPATCHER)
-    @set_ev_cls(EventFaucetStateExpire, MAIN_DISPATCHER)
-    @set_ev_cls(EventFaucetAdvertise, MAIN_DISPATCHER)
-    @set_ev_cls(EventFaucetLLDPAdvertise, MAIN_DISPATCHER)
-    @kill_on_exception(exc_logname)
-    def _valve_flow_services(self, ryu_event):
+    def _valve_flow_services(self, service):
         """Call a method on all Valves and send any resulting flows."""
-        self.valves_manager.valve_flow_services(self._VALVE_SERVICES[type(ryu_event)])
+        self.valves_manager.valve_flow_services(service)
 
     def get_config(self):
         """FAUCET experimental API: return config for all Valves."""
@@ -216,7 +158,7 @@ class Faucet(RyuAppBase):
             return self.valves_manager.valves[dp_id].dp.get_tables()
         return {}
 
-    @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER) # pylint: disable=no-member
+    @APP.message('PACKET_IN')
     @kill_on_exception(exc_logname)
     def packet_in_handler(self, ryu_event):
         """Handle a packet in event from the dataplane.
@@ -234,7 +176,7 @@ class Faucet(RyuAppBase):
             return
         self.valves_manager.valve_packet_in(valve, pkt_meta)
 
-    @set_ev_cls(ofp_event.EventOFPErrorMsg, MAIN_DISPATCHER) # pylint: disable=no-member
+    @APP.message('ERROR')
     @kill_on_exception(exc_logname)
     def error_handler(self, ryu_event):
         """Handle an OFPError from a datapath.
@@ -245,9 +187,9 @@ class Faucet(RyuAppBase):
         valve, _, msg = self._get_valve('error_handler', ryu_event)
         if valve is None:
             return
-        valve.oferror(msg)
+        valve.oferror(ryu_event)
 
-    @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER) # pylint: disable=no-member
+    # UNUSED IN ZOF
     @kill_on_exception(exc_logname)
     def features_handler(self, ryu_event):
         """Handle receiving a switch features message from a datapath.
@@ -271,6 +213,10 @@ class Faucet(RyuAppBase):
         valve, ryu_dp, _ = self._get_valve('_datapath_connect', ryu_event)
         if valve is None:
             return
+        # Obtain FEATURES_REPLY from zof.Datapath object.
+        flowmods = valve.switch_features(ryu_dp.features)
+        self._send_flow_msgs(valve, flowmods)
+        # Handle remaining "connect" messages.
         discovered_ports = [
             port for port in list(ryu_dp.ports.values()) if not valve_of.ignore_port(port.port_no)]
         flowmods = valve.datapath_connect(discovered_ports)
@@ -288,7 +234,7 @@ class Faucet(RyuAppBase):
             return
         valve.datapath_disconnect()
 
-    @set_ev_cls(ofp_event.EventOFPDescStatsReply, MAIN_DISPATCHER) # pylint: disable=no-member
+    @APP.message('REPLY.DESC')
     @kill_on_exception(exc_logname)
     def desc_stats_reply_handler(self, ryu_event):
         """Handle OFPDescStatsReply from datapath.
@@ -299,10 +245,10 @@ class Faucet(RyuAppBase):
         valve, _, msg = self._get_valve('desc_stats_reply_handler', ryu_event)
         if valve is None:
             return
-        body = msg.body
+        body = msg
         valve.ofdescstats_handler(body)
 
-    @set_ev_cls(ofp_event.EventOFPPortStatus, MAIN_DISPATCHER) # pylint: disable=no-member
+    @APP.message('PORT_STATUS')
     @kill_on_exception(exc_logname)
     def port_status_handler(self, ryu_event):
         """Handle a port status change event.
@@ -315,16 +261,16 @@ class Faucet(RyuAppBase):
             return
         if not valve.dp.running:
             return
-        port_no = msg.desc.port_no
-        reason = msg.reason
-        state = msg.desc.state
-        valve.logger.info('port state %u (reason %u)' % (state, reason))
+        port_no = msg['port_no']
+        reason = msg['reason']
+        state = msg['state']
+        valve.logger.info('port state %r (reason %r)' % (state, reason))
         port_status = valve_of.port_status_from_state(state)
         flowmods = valve.port_status_handler(
             port_no, reason, port_status)
         self._send_flow_msgs(valve, flowmods)
 
-    @set_ev_cls(ofp_event.EventOFPFlowRemoved, MAIN_DISPATCHER) # pylint: disable=no-member
+    @APP.message('FLOW_REMOVED')
     @kill_on_exception(exc_logname)
     def flowremoved_handler(self, ryu_event):
         """Handle a flow removed event.
@@ -335,8 +281,12 @@ class Faucet(RyuAppBase):
         valve, ryu_dp, msg = self._get_valve('flowremoved_handler', ryu_event)
         if valve is None:
             return
-        ofp = ryu_dp.ofproto
-        reason = msg.reason
-        if reason == ofp.OFPRR_IDLE_TIMEOUT:
-            flowmods = valve.flow_timeout(msg.table_id, msg.match)
+        reason = msg['reason']
+        if reason == 'IDLE_TIMEOUT':
+            flowmods = valve.flow_timeout(msg['table_id'], msg['match'])
             self._send_flow_msgs(valve, flowmods)
+
+    # Attach zof handlers to base class methods.
+    APP.message('CHANNEL_UP')(RyuAppBase.connect_or_disconnect_handler)
+    APP.message('CHANNEL_DOWN')(RyuAppBase.connect_or_disconnect_handler)
+    APP.event('SIGNAL')(RyuAppBase.signal_handler)
