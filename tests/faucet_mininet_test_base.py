@@ -1317,7 +1317,7 @@ dbs:
             return False
         return True
 
-    def verify_hup_faucet(self, timeout=3):
+    def verify_hup_faucet(self, timeout=5):
         """HUP and verify the HUP was processed."""
         start_configure_count = self.get_configure_count()
         self.hup_faucet()
