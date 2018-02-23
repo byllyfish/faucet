@@ -26,7 +26,7 @@ import tempfile
 import shutil
 import socket
 
-from faucet.zof_constant import ofp, ipv4, ipv6, arp, mac, ether, inet
+from faucet.zof_constant import ofp, ipv4, ipv6, arp, mac, ether, inet, icmpv6
 from zof.pktview import make_pktview
 #from ryu.ofproto import ofproto_v1_3 as ofp
 #from ryu.lib.packet import ethernet, arp, vlan, ipv4, ipv6, packet
