@@ -31,7 +31,7 @@ from faucet.watcher import watcher_factory
 APP = zof.Application('gauge')
 
 @APP.bind()
-class Gauge(valve_ryuapp.RyuAppBase):
+class Gauge(RyuAppBase):
     """Ryu app for polling Faucet controlled datapaths for stats/state.
 
     It can poll multiple datapaths. The configuration files for each datapath

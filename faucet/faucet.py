@@ -34,7 +34,7 @@ from faucet import valve_of
 APP = zof.Application('faucet')
 
 @APP.bind()
-class Faucet(valve_ryuapp.RyuAppBase):
+class Faucet(RyuAppBase):
     """A RyuApp that implements an L2/L3 learning VLAN switch.
 
     Valve provides the switch implementation; this is a shim for the Ryu

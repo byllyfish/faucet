@@ -31,7 +31,7 @@ def kill_on_exception(logname):
     def _koe(func):
         def __die():
             logging.getLogger(logname).exception(
-                'Unhandled exception, killing ZOF')
+                'Unhandled exception, killing Faucet')
             logging.shutdown()
             os.kill(os.getpid(), signal.SIGTERM)
 
