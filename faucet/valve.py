@@ -19,6 +19,7 @@
 
 import logging
 import time
+import zof
 
 from collections import deque, namedtuple
 
@@ -1105,8 +1106,7 @@ class Valve(object):
             **self.base_prom_labels).inc(len(reordered_flow_msgs))
         self.recent_ofmsgs.extend(reordered_flow_msgs)
         for flow_msg in reordered_flow_msgs:
-            flow_msg.datapath = ryu_dp
-            ryu_dp.send_msg(flow_msg)
+            zof.compile(flow_msg).send(datapath_id=hex(ryu_dp.id))
 
     def flow_timeout(self, table_id, match):
         """Call flow timeout message handler:

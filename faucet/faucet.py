@@ -177,7 +177,7 @@ class Faucet(RyuAppBase):
         while True:
             if self.valves_manager.config_watcher.files_changed():
                 if self.stat_reload:
-                    zof.post_event('FAUCET.RECONFIGURE')
+                    zof.post_event({'event': 'FAUCET.RECONFIGURE'})
             await self._thread_jitter(3)
 
     def _valve_flow_services(self, valve_service):
