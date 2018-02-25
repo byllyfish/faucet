@@ -174,8 +174,7 @@ class GaugeThreadPoller(GaugePoller):
         checks that a response has been received in a loop."""
         await asyncio.sleep(random.randint(1, self.conf.interval))
         while True:
-            ofmsg = zof.compile(self.send_req())
-            ofmsg.send(datapath_id=hex(self.dp.dp_id))
+            self.send_req()
             self.reply_pending = True
             await asyncio.sleep(self.conf.interval)
             if self.reply_pending:
@@ -196,7 +195,9 @@ class GaugePortStatsPoller(GaugeThreadPoller):
     """
 
     def send_req(self):
-        return {'type': 'REQUEST.PORT_STATS', 'msg':{'port_no': 'ANY'}}
+        if self.ryudp:
+            req = {'type': 'REQUEST.PORT_STATS', 'msg':{'port_no': 'ANY'}}
+            self.ryudp.send_msg(req)
 
     def no_response(self):
         self.logger.info(
@@ -212,13 +213,15 @@ class GaugeFlowTablePoller(GaugeThreadPoller):
     """
 
     def send_req(self):
-        return {'type': 'REQUEST.FLOW', 'msg':{
-            'table_id': 'ALL',
-            'out_port': 'ANY',
-            'out_group': 'ANY',
-            'cookie': 0,
-            'cookie_mask': 0,
-            'match': []}}
+        if self.ryudp:
+            req = {'type': 'REQUEST.FLOW', 'msg':{
+                'table_id': 'ALL',
+                'out_port': 'ANY',
+                'out_group': 'ANY',
+                'cookie': 0,
+                'cookie_mask': 0,
+                'match': []}}
+            self.ryudp.send_msg(req)
 
     def no_response(self):
         self.logger.info(

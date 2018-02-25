@@ -159,8 +159,8 @@ class Gauge(RyuAppBase):
         if watchers is None:
             return
         self.logger.info('%s up', dpid_log(ryu_dp.id))
-        zof.compile(valve_of.faucet_config()).send(datapath_id=hex(ryu_dp.id))
-        zof.compile(valve_of.gauge_async()).send(datapath_id=hex(ryu_dp.id))
+        ryu_dp.send_msg(valve_of.faucet_config())
+        ryu_dp.send_msg(valve_of.gauge_async())
         self._start_watchers(ryu_dp, ryu_dp.id, watchers)
 
     def _stop_watchers(self, dp_id, watchers):
