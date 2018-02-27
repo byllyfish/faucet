@@ -106,7 +106,6 @@ class GaugePortStatePrometheusPoller(GaugePortStatePoller):
     """Export port state changes to Prometheus."""
 
     def update(self, rcv_time, dp_id, msg):
-<<<<<<< HEAD
         super(GaugePortStatePrometheusPoller, self).update(rcv_time, dp_id, msg)
         port_no = msg['port_no']
         if port_no in self.dp.ports:
