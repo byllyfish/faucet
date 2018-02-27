@@ -20,7 +20,7 @@
 
 from urllib.parse import parse_qs
 
-from ryu.lib import hub
+#from ryu.lib import hub
 from pbr.version import VersionInfo
 from prometheus_client import Gauge as PromGauge
 from prometheus_client import core, generate_latest, start_http_server, CONTENT_TYPE_LATEST, REGISTRY
@@ -66,9 +66,9 @@ class PromClient(object): # pylint: disable=too-few-public-methods
     def start(self, prom_port, prom_addr, use_test_thread=False):
         """Start webserver."""
         if not self.server:
-            if use_test_thread:
-                start_http_server(int(prom_port), prom_addr)
-            else:
-                app = make_wsgi_app()
-                self.server = hub.WSGIServer((prom_addr, int(prom_port)), app)
-                hub.spawn(self.server.serve_forever)
+            #if use_test_thread:
+            start_http_server(int(prom_port), prom_addr)
+            #else:
+            #    app = make_wsgi_app()
+            #    self.server = hub.WSGIServer((prom_addr, int(prom_port)), app)
+            #    hub.spawn(self.server.serve_forever)
