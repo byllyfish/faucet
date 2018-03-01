@@ -139,7 +139,7 @@ def main():
         apps.remove('ryu.app.ofctl_rest')
     if 'test_experimental_api.py' in apps:
         apps.remove('test_experimental_api.py')
-        apps.append('test_experimental_api')
+        apps.append('tests.test_experimental_api')
 
     ryu_args.append('--x-modules=%s' % ','.join(apps))
 

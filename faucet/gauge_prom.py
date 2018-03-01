@@ -102,6 +102,14 @@ class GaugePortStatsPrometheusPoller(GaugePortStatsPoller):
                 self.prom_client.metrics[stat_name].labels(**port_labels).set(stat_val)
 
 
+def _reason(reason):
+    reasons = {'ADD': 1, 'DELETE': 2, 'MODIFY': 3}
+    return reasons.get(reason) or int(reason, 0)
+
+def _state(state):
+    return 1 if 'LINK_DOWN' in state else 0
+
+
 class GaugePortStatePrometheusPoller(GaugePortStatePoller):
     """Export port state changes to Prometheus."""
 
@@ -124,15 +132,6 @@ class GaugePortStatePrometheusPoller(GaugePortStatePoller):
             return _state(msg[prom_var])
         else:
             return msg[prom_var]
-
-    @staticmethod
-    def _reason(reason):
-        reasons = {'ADD': 1, 'DELETE': 2, 'MODIFY': 3}
-        return reasons.get(reason) or int(reason, 0)
-
-    @staticmethod
-    def _state(state):
-        return 1 if 'LINK_DOWN' in state else 0
 
 
 class GaugeFlowTablePrometheusPoller(GaugeFlowTablePoller):
