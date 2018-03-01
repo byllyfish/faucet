@@ -559,12 +559,12 @@ def valve_flowreorder(input_ofmsgs):
     by_kind = {}
     for ofmsg in input_ofmsgs:
         by_kind.setdefault(_msg_kind(ofmsg), []).append(ofmsg)
-    delete_ofmsgs = by_kind['delete']
+    delete_ofmsgs = by_kind.get('delete')
     if not delete_ofmsgs:
         return input_ofmsgs
-    groupadd_ofmsgs = by_kind['groupadd']
-    meteradd_ofmsgs = by_kind['meteradd']
-    other_ofmsgs = by_kind['other']
+    groupadd_ofmsgs = by_kind.get('groupadd', [])
+    meteradd_ofmsgs = by_kind.get('meteradd', [])
+    other_ofmsgs = by_kind.get('other', [])
     output_ofmsgs = []
     for ofmsgs in (delete_ofmsgs, groupadd_ofmsgs, meteradd_ofmsgs):
         if ofmsgs:
