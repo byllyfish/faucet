@@ -403,7 +403,7 @@ socket_timeout=15
                     os.path.dirname(full_faucet_dir),
                     ' '.join(env_vars),
                     self.MAX_CTL_TIME,
-                    os.path.join(full_faucet_dir, '__main__.py'),
+                    '/usr/local/bin/faucet',
                     cprofile_args,
                     args))
             script_wrapper.write(faucet_cli)
