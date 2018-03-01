@@ -131,7 +131,7 @@ class GaugePortStatePrometheusPoller(GaugePortStatePoller):
         elif prom_var == 'state':
             return _state(msg[prom_var])
         else:
-            return msg[prom_var]
+            return msg['ethernet'][prom_var]
 
 
 class GaugeFlowTablePrometheusPoller(GaugeFlowTablePoller):
