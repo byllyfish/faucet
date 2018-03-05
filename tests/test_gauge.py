@@ -18,10 +18,10 @@ import yaml
 import requests
 
 from faucet import gauge_prom, gauge_influx, gauge_pollers, watcher
-from ryu.ofproto import ofproto_v1_3 as ofproto
-from ryu.ofproto import ofproto_v1_3_parser as parser
-from ryu.lib import type_desc
-from ryu.lib import hub
+#from ryu.ofproto import ofproto_v1_3 as ofproto
+#from ryu.ofproto import ofproto_v1_3_parser as parser
+#from ryu.lib import type_desc
+#from ryu.lib import hub
 
 
 class QuietHandler(BaseHTTPRequestHandler):

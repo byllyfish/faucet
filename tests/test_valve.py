@@ -25,8 +25,10 @@ import unittest
 import tempfile
 import shutil
 import socket
+import asyncio
+import struct
 
-from faucet.zof_constant import ofp, ipv4, ipv6, arp, mac, ether, inet, icmpv6
+from faucet.zof_constant import ofp, ipv4, ipv6, arp, mac, ether, inet, icmp, icmpv6
 from zof.pktview import make_pktview
 #from ryu.ofproto import ofproto_v1_3 as ofp
 #from ryu.lib.packet import ethernet, arp, vlan, ipv4, ipv6, packet
@@ -35,7 +37,6 @@ from prometheus_client import CollectorRegistry
 
 from faucet import faucet_bgp
 from faucet import faucet_experimental_event
-
 from faucet import faucet_metrics
 from faucet import valve
 from faucet import valves_manager
@@ -44,6 +45,15 @@ from faucet import valve_packet
 from faucet import valve_util
 
 from fakeoftable import FakeOFTable
+
+def _run_sync(coro):
+    """Hack to run coroutine functions synchronously inline."""
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(coro)
+
+class Bunch:
+    def __getitem__(self, key):
+        return getattr(self, key)
 
 
 FAUCET_MAC = '0e:00:00:00:00:01'
@@ -68,6 +78,8 @@ def build_pkt(pkt):
         result.arp_tpa = pkt['arp_target_ip']
         result.arp_op = arp.ARP_REQUEST
         result.arp_spa = pkt['arp_source_ip']
+        if result.eth_dst == FAUCET_MAC:
+            result.arp_op = arp.ARP_REPLY   
     elif 'ipv6_src' in pkt and 'ipv6_dst' in pkt:
         result.eth_type = ether.ETH_TYPE_IPV6
         result.ipv6_src = pkt['ipv6_src']
@@ -76,16 +88,20 @@ def build_pkt(pkt):
         result.ipv6_exthdr = 1
         if 'router_solicit_ip' in pkt:
             result.icmpv6_type = icmpv6.ND_ROUTER_SOLICIT
+            result.hop_limit = 255
         elif 'neighbor_advert_ip' in pkt:
             result.icmpv6_type = icmpv6.ND_NEIGHBOR_ADVERT
             result.ipv6_nd_target = pkt['neighbor_advert_ip']
             result.ipv6_nd_sll = pkt['eth_src']
+            result.hop_limit = 255
         elif 'neighbor_solicit_ip' in pkt:
             result.icmpv6_type = icmpv6.ND_NEIGHBOR_SOLICIT
             result.ipv6_nd_target = pkt['neighbor_solicit_ip']
             result.ipv6_nd_sll = pkt['eth_src']
+            result.hop_limit = 255
         elif 'echo_request_data' in pkt:
             result.icmpv6_type = icmpv6.ICMPV6_ECHO_REQUEST
+            result.hop_limit = 64
             result.payload = struct.pack('>HHs', 1, 1, pkt['echo_request_data'])
     elif 'ipv4_src' in pkt and 'ipv4_dst' in pkt:
         result.eth_type = ether.ETH_TYPE_IP
@@ -93,12 +109,12 @@ def build_pkt(pkt):
         result.ipv4_dst = pkt['ipv4_dst']
         if 'echo_request_data' in pkt:
             result.ip_proto = inet.IPPROTO_ICMP
-            result.icmpv4_type = icmp.ICMPV6_ECHO_REQUEST
+            result.icmpv4_type = icmp.ICMP_ECHO_REQUEST
             result.payload = struct.pack('>HHs', 1, 1, pkt['echo_request_data'])
     if 'vid' in pkt:
         result.vlan_vid = pkt['vid']
     assert 'eth_type' in result, pkt
-    return (result, result.eth_type)
+    return result
 
 
 class ValveTestBase(unittest.TestCase):
@@ -254,12 +270,12 @@ vlans:
         self.registry = CollectorRegistry()
         # TODO: verify Prometheus variables
         self.metrics = faucet_metrics.FaucetMetrics(reg=self.registry) # pylint: disable=unexpected-keyword-arg
-        self.notifier = zof_event_notifier.FaucetExperimentalEventNotifier(
+        self.notifier = faucet_experimental_event.FaucetExperimentalEventNotifier(
             self.faucet_event_sock, self.metrics, self.logger)
         self.bgp = faucet_bgp.FaucetBgp(self.logger, self.metrics, self.send_flows_to_dp_by_id)
         self.valves_manager = valves_manager.ValvesManager(
             self.LOGNAME, self.logger, self.metrics, self.notifier, self.bgp, self.send_flows_to_dp_by_id)
-        self.notifier.start()
+        _run_sync(self.notifier.start())
         self.update_config(config)
         self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         self.sock.connect(self.faucet_event_sock)
@@ -270,6 +286,7 @@ vlans:
         for handler in self.logger.handlers:
             handler.close()
         self.logger.handlers = []
+        self.notifier.stop()
         self.sock.close()
         shutil.rmtree(self.tmpdir)
 
@@ -317,7 +334,7 @@ vlans:
     @staticmethod
     def packet_outs_from_flows(flows):
         """Return flows that are packetout actions."""
-        return [flow for flow in flows if isinstance(flow, valve_of.parser.OFPPacketOut)]
+        return [flow for flow in flows if flow['type'] == 'PACKET_OUT']
 
     def learn_hosts(self):
         """Learn some hosts."""
@@ -393,12 +410,12 @@ vlans:
             vlan_match = match
             vlan_match['vid'] = vid
             vlan_pkt = build_pkt(match)
-        msg = namedtuple(
-            'null_msg',
-            ('match', 'in_port', 'data', 'total_len', 'cookie', 'reason'))
+        msg = Bunch()
         msg.reason = valve_of.ofp.OFPR_ACTION
-        msg.data = vlan_pkt.data
+        msg.data = vlan_pkt
+        msg.pkt = vlan_pkt
         msg.total_len = len(msg.data)
+        msg.in_port = port
         msg.match = {'in_port': port}
         msg.cookie = self.valve.dp.cookie
         pkt_meta = self.valve.parse_pkt_meta(msg)
@@ -429,18 +446,16 @@ class ValveTestCase(ValveTestBase):
 
     def test_oferror(self):
         """Test OFError handler."""
-        datapath = None
-        msg = valve_of.parser.OFPFlowMod(datapath=datapath)
-        msg.xid = 123
+        msg = { 'type': 'FLOW_MOD', 'xid': 123 }
         self.valve.recent_ofmsgs.append(msg)
-        test_error = valve_of.parser.OFPErrorMsg(datapath=datapath, msg=msg)
+        test_error = { 'type': 'ERROR', 'xid': 123 }
         self.valve.oferror(test_error)
 
     def test_switch_features(self):
         """Test switch features handler."""
         self.assertTrue(isinstance(self.valve, valve.TfmValve))
         features_flows = self.valve.switch_features(None)
-        tfm_flows = [flow for flow in features_flows if isinstance(flow, valve_of.parser.OFPTableFeaturesStatsRequest)]
+        tfm_flows = [flow for flow in features_flows if isinstance(flow, str)]
         # TODO: verify TFM content.
         self.assertTrue(tfm_flows)
 

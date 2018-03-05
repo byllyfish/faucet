@@ -20,8 +20,8 @@
 
 import json
 import ipaddress
-from ryu.services.protocols.bgp.bgpspeaker import BGPSpeaker
-from ryu.services.protocols.bgp.api.base import CoreNotStarted
+#from ryu.services.protocols.bgp.bgpspeaker import BGPSpeaker
+#from ryu.services.protocols.bgp.api.base import CoreNotStarted
 
 from faucet.valve_util import btos
 

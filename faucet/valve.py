@@ -1100,7 +1100,7 @@ class Valve(object):
         """
         self.metrics.of_errors.labels( # pylint: disable=no-member
             **self.base_prom_labels).inc()
-        orig_msgs = [orig_msg for orig_msg in self.recent_ofmsgs if orig_msg.xid == msg.xid]
+        orig_msgs = [orig_msg for orig_msg in self.recent_ofmsgs if orig_msg['xid'] == msg['xid']]
         error_txt = msg
         if orig_msgs:
             error_msg = orig_msgs[0]
@@ -1143,7 +1143,7 @@ class TfmValve(Valve):
     SKIP_VALIDATION_TABLES = ()
 
     def switch_features(self, _msg):
-        ofmsgs = super(TfmValve, self).switch_features(msg)
+        ofmsgs = super(TfmValve, self).switch_features(_msg)
         import os
         pipeline_config = os.path.join(self.dp.pipeline_config_dir, self.PIPELINE_CONF)
         with open(pipeline_config) as afile:
