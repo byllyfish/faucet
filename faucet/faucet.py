@@ -245,14 +245,14 @@ class Faucet(RyuAppBase):
         Args:
             ryu_event (ryu.controller.ofp_event.EventOFPErrorMsg): trigger
         """
-        msg = ryu_event.msg
-        ryu_dp = msg.datapath
+        msg = ryu_event['msg']
+        ryu_dp = ryu_event['datapath']
         valve = self._get_valve(ryu_dp, 'error_handler', msg)
         if valve is None:
             return
-        valve.oferror(msg)
+        valve.oferror(ryu_event)
 
-    @APP.message('FEATURES_REPLY')
+    # UNUSED IN ZOF
     @kill_on_exception(exc_logname)
     def features_handler(self, ryu_event):
         """Handle receiving a switch features message from a datapath.
@@ -280,6 +280,10 @@ class Faucet(RyuAppBase):
         valve = self._get_valve(ryu_dp, '_datapath_connect')
         if valve is None:
             return
+        # Obtain FEATURES_REPLY from zof.Datapath object.
+        flowmods = valve.switch_features(ryu_dp.features)
+        self._send_flow_msgs(dp_id, flowmods)
+        # Handle remaining "connect" messages.
         discovered_ports = [
             port for port in list(ryu_dp.ports.values()) if not valve_of.ignore_port(port.port_no)]
         flowmods = valve.datapath_connect(discovered_ports)
