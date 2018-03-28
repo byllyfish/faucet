@@ -567,11 +567,7 @@ def _msg_kind(ofmsg):
 
 def dedupe_ofmsgs(input_ofmsgs):
     """Return deduplicated ofmsg list."""
-    deduped_input_ofmsgs = []
-    for ofmsg in input_ofmsgs:
-        if ofmsg not in deduped_input_ofmsgs:
-            deduped_input_ofmsgs.append(ofmsg)
-    return deduped_input_ofmsgs
+    return _HashWrapper.dedupe(input_ofmsgs)
 
 
 def valve_flowreorder(input_ofmsgs, use_barriers=True):
@@ -588,8 +584,8 @@ def valve_flowreorder(input_ofmsgs, use_barriers=True):
     delete_ofmsgs = dedupe_ofmsgs(by_kind.get('delete', []))
     if not delete_ofmsgs:
         return input_ofmsgs
-    groupadd_ofmsgs = by_kind.get('groupadd', [])
-    meteradd_ofmsgs = by_kind.get('meteradd', [])
+    groupadd_ofmsgs = dedupe_ofmsgs(by_kind.get('groupadd', []))
+    meteradd_ofmsgs = dedupe_ofmsgs(by_kind.get('meteradd', []))
     tfm_ofmsgs = by_kind.get('tfm', [])
     other_ofmsgs = by_kind.get('other', [])
     output_ofmsgs = []
@@ -693,3 +689,38 @@ def desc_stats_request(datapath=None):
     return {
         'type': 'REQUEST.DESC'
     }
+
+
+# Support for hashing dictionaries.
+
+import collections
+
+def _hash_wrap(value):
+    """Hash a dictionary recursively.
+
+    Value is independent of iteration order for dicts, lists or tuples.
+    """
+    if isinstance(value, dict):
+        return sum(hash(k) * 11 + _hash_wrap(v) * 7 for k, v in value.items())
+    elif isinstance(value, (list, tuple)):
+        return sum(_hash_wrap(v) * 7 for v in value)
+    else:
+        return hash(value)
+
+class _HashWrapper(object):
+    """Wraps unhashable dictionary/lists so they can be added to a set/dict."""
+
+    def __init__(self, value):
+        self.value = value
+
+    def __hash__(self):
+        return _hash_wrap(self.value)
+
+    def __eq__(self, value):
+        return self.value == value
+
+    @staticmethod
+    def dedupe(items):
+        """Dedupe items while maintaining original order."""
+        coll = collections.OrderedDict((_HashWrapper(i), None) for i in items)
+        return [obj.value for obj in coll.keys()]
