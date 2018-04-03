@@ -19,7 +19,7 @@
 
 import ipaddress
 
-from zof.pktview import pktview_to_list, pktview_from_ofctl
+from zof.pktview import pktview_to_list, pktview_from_ofctl, PktView
 
 from faucet.zof_constant import ofp, ether, mac, inet
 
@@ -713,7 +713,7 @@ def _hash_wrap(value):
 
     Value is independent of iteration order for dicts, lists or tuples.
     """
-    if isinstance(value, dict):
+    if isinstance(value, (dict, PktView)):
         return sum(hash(k) * 11 + _hash_wrap(v) * 7 for k, v in value.items())
     elif isinstance(value, (list, tuple)):
         return sum(_hash_wrap(v) * 7 for v in value)
