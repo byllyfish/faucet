@@ -565,9 +565,26 @@ def _msg_kind(ofmsg):
         return 'meteradd'
     return 'other'
 
+def _partition_ofmsgs(input_ofmsgs):
+    by_kind = {}
+    for ofmsg in input_ofmsgs:
+        by_kind.setdefault(_msg_kind(ofmsg), []).append(ofmsg)
+    return by_kind
+
 def dedupe_ofmsgs(input_ofmsgs):
     """Return deduplicated ofmsg list."""
-    return _HashWrapper.dedupe(input_ofmsgs)
+    # Built in comparison doesn't work until serialized() called
+    deduped_input_ofmsgs = []
+    if input_ofmsgs:
+        input_ofmsgs_hashes = set()
+        for ofmsg in input_ofmsgs:
+            # Can't use dict or json comparison as may be nested
+            ofmsg_str = _HashThing(ofmsg)
+            if ofmsg_str in input_ofmsgs_hashes:
+                continue
+            deduped_input_ofmsgs.append(ofmsg)
+            input_ofmsgs_hashes.add(ofmsg_str)
+    return deduped_input_ofmsgs
 
 
 def valve_flowreorder(input_ofmsgs, use_barriers=True):
@@ -578,16 +595,14 @@ def valve_flowreorder(input_ofmsgs, use_barriers=True):
     # at most only one barrier to deal with.
     # TODO: further optimizations may be possible - for example,
     # reorder adds to be in priority order.
-    by_kind = {}
-    for ofmsg in input_ofmsgs:
-        by_kind.setdefault(_msg_kind(ofmsg), []).append(ofmsg)
+    by_kind = _partition_ofmsgs(input_ofmsgs)
     delete_ofmsgs = dedupe_ofmsgs(by_kind.get('delete', []))
     if not delete_ofmsgs:
         return input_ofmsgs
     groupadd_ofmsgs = dedupe_ofmsgs(by_kind.get('groupadd', []))
     meteradd_ofmsgs = dedupe_ofmsgs(by_kind.get('meteradd', []))
-    tfm_ofmsgs = by_kind.get('tfm', [])
-    other_ofmsgs = by_kind.get('other', [])
+    tfm_ofmsgs = dedupe_ofmsgs(by_kind.get('tfm', []))
+    other_ofmsgs = dedupe_ofmsgs(by_kind.get('other', []))
     output_ofmsgs = []
     for ofmsgs in (delete_ofmsgs, tfm_ofmsgs, groupadd_ofmsgs, meteradd_ofmsgs):
         if ofmsgs:
@@ -693,8 +708,6 @@ def desc_stats_request(datapath=None):
 
 # Support for hashing dictionaries.
 
-import collections
-
 def _hash_wrap(value):
     """Hash a dictionary recursively.
 
@@ -707,20 +720,15 @@ def _hash_wrap(value):
     else:
         return hash(value)
 
-class _HashWrapper(object):
+class _HashThing(object):
     """Wraps unhashable dictionary/lists so they can be added to a set/dict."""
 
     def __init__(self, value):
         self.value = value
+        self.hash = _hash_wrap(value)
 
     def __hash__(self):
-        return _hash_wrap(self.value)
+        return self.hash
 
-    def __eq__(self, value):
-        return self.value == value
-
-    @staticmethod
-    def dedupe(items):
-        """Dedupe items while maintaining original order."""
-        coll = collections.OrderedDict((_HashWrapper(i), None) for i in items)
-        return [obj.value for obj in coll.keys()]
+    def __eq__(self, other):
+        return self.value == other.value
