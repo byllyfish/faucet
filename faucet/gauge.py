@@ -179,3 +179,6 @@ class Gauge(RyuAppBase):
 
     # Add zof handlers for base class.
     APP.event('START')(RyuAppBase.start)
+    APP.message('CHANNEL_UP')(RyuAppBase.connect_or_disconnect_handler)
+    APP.message('CHANNEL_DOWN')(RyuAppBase.connect_or_disconnect_handler)
+    APP.event('SIGNAL')(RyuAppBase.signal_handler)

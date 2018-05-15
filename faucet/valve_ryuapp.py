@@ -38,10 +38,6 @@ class _DPSetAdapter:
 class RyuAppBase(object):
     """RyuApp base class for FAUCET/Gauge."""
 
-    OFP_VERSIONS = valve_of.OFP_VERSIONS
-    _CONTEXTS = {
-        'dpset': dpset.DPSet,
-    }
     logname = ''
     exc_logname = ''
 
@@ -103,7 +99,7 @@ class RyuAppBase(object):
                     zof.post_event({'event': 'RECONFIGURE'})
             await self._thread_jitter(3)
 
-    async def start(self):
+    async def start(self, _event):
         """Start controller."""
 
         if self.stat_reload:
@@ -126,7 +122,7 @@ class RyuAppBase(object):
             valve, ryu_dp, msg: Nones, or datapath object, Ryu datapath, and Ryu msg (if any).
         """
         datapath_obj = None
-        msg = ryu_event['msg']
+        msg = ryu_event.get('msg', ryu_event)
         ryu_dp = ryu_event['datapath']
         dp_id = ryu_dp.id
         if dp_id in datapath_objs:

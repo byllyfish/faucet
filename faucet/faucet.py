@@ -76,7 +76,7 @@ class Faucet(RyuAppBase):
                 ('resolve_gateways', 2), 
                 ('state_expire', 5),
                 ('advertise', 5),
-                ('lldp_beacon', 5)):
+                ('send_lldp_beacons', 5)):
             func = functools.partial(self._valve_flow_services, service)
             zof.ensure_future(self._thread_reschedule(func, period))
 

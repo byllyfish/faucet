@@ -675,7 +675,7 @@ def flood_untagged_port_outputs(ports, in_port=None, exclude_ports=None):
 
 def faucet_config(datapath=None):
     """Return switch config for FAUCET."""
-    assert datapath is None
+    # datapath is not used in zof.
     return {
         'type': 'SET_CONFIG',
         'msg': {
@@ -687,7 +687,7 @@ def faucet_config(datapath=None):
 
 def faucet_async(datapath=None, notify_flow_removed=False, packet_in=True):
     """Return async message config for FAUCET."""
-    assert datapath is None
+    # datapath is not used in zof.
     packet_in_mask = []
     if packet_in:
         packet_in_mask = ['APPLY_ACTION']
