@@ -794,7 +794,7 @@ class ValveIPv6RouteManager(ValveRouteManager):
 
     def _nd_solicit_handler(self, pkt_meta, _ipv6_pkt, icmpv6_pkt, src_ip, _dst_ip):
         ofmsgs = []
-        solicited_ip = btos(icmpv6_pkt.data.dst)
+        solicited_ip = btos(icmpv6_pkt.ipv6_nd_target)
         vlan = pkt_meta.vlan
         if vlan.is_faucet_vip(ipaddress.ip_address(solicited_ip)):
             ofmsgs.extend(
@@ -813,7 +813,7 @@ class ValveIPv6RouteManager(ValveRouteManager):
 
     def _nd_advert_handler(self, pkt_meta, _ipv6_pkt, icmpv6_pkt, _src_ip, _dst_ip):
         ofmsgs = []
-        target_ip = ipaddress.ip_address(btos(icmpv6_pkt.data.dst))
+        target_ip = ipaddress.ip_address(btos(icmpv6_pkt.ipv6_nd_target))
         vlan = pkt_meta.vlan
         if vlan.ip_in_vip_subnet(target_ip):
             ofmsgs.extend(self._update_nexthop(
