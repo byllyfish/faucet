@@ -73,11 +73,15 @@ class Faucet(RyuAppBase):
 
         # Start all threads
         for service, period in (
+                (self.metric_update, 5),
                 ('resolve_gateways', 2), 
                 ('state_expire', 5),
                 ('advertise', 5),
                 ('send_lldp_beacons', 5)):
-            func = functools.partial(self._valve_flow_services, service)
+            if isinstance(service, str):
+                func = functools.partial(self._valve_flow_services, service)
+            else:
+                func = service
             zof.ensure_future(self._thread_reschedule(func, period))
 
         # Register to API
@@ -95,11 +99,6 @@ class Faucet(RyuAppBase):
         ryu_dp = self.dpset.get(deleted_dpid)
         if ryu_dp is not None:
             ryu_dp.close()
-
-    @kill_on_exception(exc_logname)
-    def _load_configs(self, new_config_file):
-        self.valves_manager.load_configs(
-            new_config_file, delete_dp=self._delete_deconfigured_dp)
 
     @APP.event('RECONFIGURE')
     @kill_on_exception(exc_logname)
@@ -142,6 +141,11 @@ class Faucet(RyuAppBase):
 
     def _config_files_changed(self):
         return self.valves_manager.config_watcher.files_changed()
+
+    @kill_on_exception(exc_logname)    
+    def metric_update(self):    
+        """Handle a request to update metrics in the controller."""    
+        self.valves_manager.update_metrics()   
 
     @kill_on_exception(exc_logname)
     def _valve_flow_services(self, service):

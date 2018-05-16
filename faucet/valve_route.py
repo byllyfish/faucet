@@ -854,8 +854,7 @@ class ValveIPv6RouteManager(ValveRouteManager):
                     valve_packet.icmpv6_echo_reply, pkt_meta.port,
                     vlan.faucet_mac, pkt_meta.eth_src,
                     dst_ip, src_ip, ipv6_pkt.hop_limit,
-                    icmpv6_pkt.data.id, icmpv6_pkt.data.seq,
-                    icmpv6_pkt.data.data))
+                    icmpv6_pkt.payload))
         return ofmsgs
 
     _icmpv6_handlers = {
