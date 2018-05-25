@@ -2,7 +2,7 @@
 #
 # Convert to canonical YAML:
 #
-#   python ryu2yaml.py ../../etc/ryu/faucet/aruba_pipeline.json | oftr encode --roundtrip
+#   python ryu2yaml.py ../../etc/faucet/aruba_pipeline.json | oftr encode --roundtrip
 
 import sys
 import json

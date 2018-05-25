@@ -7,7 +7,6 @@ msg:
     config:          [ '0x00000003' ]
     max_entries:     0x00000032
     instructions:    [ GOTO_TABLE, APPLY_ACTIONS, METER ]
-    next_tables:     [ 1, 2, 3, 4, 5, 6, 7, 8 ]
     write_actions:   [  ]
     apply_actions:   [ OUTPUT, PUSH_VLAN, POP_VLAN, GROUP, SET_FIELD ]
     match:           [ IN_PORT, ETH_TYPE, ETH_DST/, ETH_SRC/, VLAN_VID, 
@@ -24,7 +23,6 @@ msg:
     config:          [ '0x00000003' ]
     max_entries:     0x00000064
     instructions:    [ GOTO_TABLE, APPLY_ACTIONS ]
-    next_tables:     [ 2, 3, 4, 5, 6, 7, 8 ]
     write_actions:   [  ]
     apply_actions:   [ OUTPUT, PUSH_VLAN, SET_FIELD ]
     match:           [ IN_PORT, ETH_TYPE, ETH_DST/, VLAN_VID ]
@@ -38,7 +36,6 @@ msg:
     config:          [ '0x00000003' ]
     max_entries:     0x00000032
     instructions:    [ GOTO_TABLE, APPLY_ACTIONS, METER ]
-    next_tables:     [ 3, 4, 5, 6, 7, 8 ]
     write_actions:   [  ]
     apply_actions:   [ OUTPUT, PUSH_VLAN, POP_VLAN, GROUP, SET_FIELD ]
     match:           [ IN_PORT, ETH_TYPE, ETH_DST/, ETH_SRC/, VLAN_VID, 
@@ -56,7 +53,6 @@ msg:
     config:          [ '0x00000003' ]
     max_entries:     0x00000064
     instructions:    [ GOTO_TABLE, APPLY_ACTIONS ]
-    next_tables:     [ 4, 5, 6, 7, 8 ]
     write_actions:   [  ]
     apply_actions:   [ OUTPUT, PUSH_VLAN, POP_VLAN, GROUP, SET_FIELD ]
     match:           [ IN_PORT, ETH_TYPE, ETH_DST, ETH_SRC, VLAN_VID ]
@@ -70,7 +66,6 @@ msg:
     config:          [ '0x00000003' ]
     max_entries:     0x00000064
     instructions:    [ GOTO_TABLE, APPLY_ACTIONS ]
-    next_tables:     [ 5, 6, 7, 8 ]
     write_actions:   [  ]
     apply_actions:   [ GROUP, SET_FIELD ]
     match:           [ ETH_TYPE, VLAN_VID, IPV4_DST/ ]
@@ -84,7 +79,6 @@ msg:
     config:          [ '0x00000003' ]
     max_entries:     0x00000064
     instructions:    [ GOTO_TABLE, APPLY_ACTIONS ]
-    next_tables:     [ 6, 7, 8 ]
     write_actions:   [  ]
     apply_actions:   [ GROUP, SET_FIELD ]
     match:           [ ETH_TYPE, VLAN_VID, IPV6_DST/ ]
@@ -98,7 +92,6 @@ msg:
     config:          [ '0x00000003' ]
     max_entries:     0x00000014
     instructions:    [ GOTO_TABLE, APPLY_ACTIONS ]
-    next_tables:     [ 7, 8 ]
     write_actions:   [  ]
     apply_actions:   [ OUTPUT ]
     match:           [ ETH_TYPE, ETH_DST, IP_PROTO, ARP_TPA, ICMPV6_TYPE ]
@@ -112,7 +105,6 @@ msg:
     config:          [ '0x00000003' ]
     max_entries:     0x00000064
     instructions:    [ GOTO_TABLE, APPLY_ACTIONS ]
-    next_tables:     [ 8 ]
     write_actions:   [  ]
     apply_actions:   [ OUTPUT, PUSH_VLAN, POP_VLAN, GROUP, SET_FIELD ]
     match:           [ IN_PORT, ETH_DST/, VLAN_VID ]
@@ -126,7 +118,6 @@ msg:
     config:          [ '0x00000003' ]
     max_entries:     0x0000012C
     instructions:    [ APPLY_ACTIONS ]
-    next_tables:     [  ]
     write_actions:   [  ]
     apply_actions:   [ OUTPUT, POP_VLAN, GROUP ]
     match:           [ ETH_DST/, VLAN_VID, IN_PORT ]

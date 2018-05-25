@@ -1,7 +1,9 @@
 """Parse JSON for TFM based table config."""
 
+import copy
 import json
 import os
+import yaml
 
 from faucet import valve_of
 
@@ -143,3 +145,30 @@ class OpenflowToRyuTranslator(object):
                 'type': type_id}}
 
         return new_table_feature
+
+
+class LoadZofTables(object):
+    """Serialize table features messages from YAML."""
+
+    def __init__(self, cfgpath, pipeline_conf):
+        pipeline_config = os.path.join(cfgpath, pipeline_conf)
+        with open(pipeline_config) as stream:
+            self.ofmsg = yaml.safe_load(stream)
+    
+    def load_tables(self, active_table_ids):
+        """Return table features message with active table_id's only.
+
+        We remove inactive tables from the TFM. The next_tables field is replaced.
+        """
+        # The following code modifies the existing table objects in place.
+        tables = []
+        for table in self.ofmsg['msg']:
+            if table['table_id'] not in active_table_ids:
+                continue
+            table['next_tables'] = sorted(
+                [table_id for table_id in active_table_ids if table_id > table['table_id']])
+            tables.append(table)
+        # Return a mutated copy of the message.
+        ofmsg = self.ofmsg.copy()
+        ofmsg['msg'] = tables
+        return ofmsg

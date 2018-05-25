@@ -24,7 +24,7 @@ import zof
 
 from collections import deque, namedtuple
 
-#from faucet import tfm_pipeline
+from faucet import tfm_pipeline
 from faucet import valve_acl
 from faucet import valve_flood
 from faucet import valve_host
@@ -1313,19 +1313,30 @@ class TfmValve(Valve):
     PIPELINE_CONF = 'tfm_pipeline.yaml'
     SKIP_VALIDATION_TABLES = ()
 
+    def _verify_pipeline_config(self, tfm):
+        for tfm_table in tfm['msg']:
+            table = self.dp.tables_by_id[tfm_table['table_id']]
+            if table.table_id in self.SKIP_VALIDATION_TABLES:
+                continue
+            if table.restricted_match_types is None:
+                continue
+            tfm_matches = set(field.lower().rstrip('/') for field in tfm_table['match'])
+            if tfm_matches != table.restricted_match_types:
+                self.logger.info(
+                    'table %s ID %s match TFM config %s != pipeline %s' % (
+                        tfm_table['name'], tfm_table['table_id'],
+                        tfm_matches, table.restricted_match_types))
+
     def switch_features(self, _msg):
         ofmsgs = self._delete_all_valve_flows()
         ofmsgs.extend(super(TfmValve, self).switch_features(_msg))
-        import os
-        pipeline_config = os.path.join(self.dp.pipeline_config_dir, self.PIPELINE_CONF)
-        with open(pipeline_config) as afile:
-            tfm = afile.read()
+        zof_table_loader = tfm_pipeline.LoadZofTables(
+            self.dp.pipeline_config_dir, self.PIPELINE_CONF)
         self.logger.info('loading pipeline configuration')
         active_table_ids = [table.table_id for table in self._active_tables()]
-        #tfm = valve_of.table_features(
-        #    ryu_table_loader.load_tables(active_table_ids))
-        #self._verify_pipeline_config(tfm)
-        #ofmsgs.append(tfm)
+        tfm = zof_table_loader.load_tables(active_table_ids)
+        self._verify_pipeline_config(tfm)
+        ofmsgs.append(tfm)
         return ofmsgs
 
 
