@@ -14,4 +14,3 @@ pylint
 pytest-cov
 pyyaml
 requests
-beka==0.3.3
