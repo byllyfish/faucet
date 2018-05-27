@@ -18,6 +18,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import asyncio
 import ipaddress
 
 from beka.beka import Beka # pylint: disable=wrong-import-position
@@ -143,7 +144,7 @@ class FaucetBgp(object):
                 peer_as=vlan.bgp_neighbor_as
                 )
 
-        hub.spawn(beka.run)
+        asyncio.ensure_future(beka.run())
         return beka
 
     def shutdown_bgp_speakers(self):

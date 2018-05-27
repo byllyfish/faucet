@@ -606,7 +606,6 @@ class ValveTestBases:
             test_error = {'type': 'ERROR', 'datapath': datapath, 'xid': 123, 'msg': msg}
             self.valve.oferror(test_error)
 
-        @unittest.skip('fix later')
         def test_switch_features(self):
             """Test switch features handler."""
             self.assertTrue(isinstance(self.valve, TfmValve), msg=type(self.valve))

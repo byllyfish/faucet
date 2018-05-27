@@ -29,7 +29,7 @@ from faucet.valve_ryuapp import RyuAppBase
 from faucet.valve_util import dpid_log, kill_on_exception
 from faucet import faucet_experimental_api
 from faucet import faucet_experimental_event
-#from faucet import faucet_bgp
+from faucet import faucet_bgp
 from faucet import valves_manager
 from faucet import faucet_metrics
 from faucet import valve_of
@@ -55,7 +55,7 @@ class Faucet(RyuAppBase):
         super(Faucet, self).__init__(*args, **kwargs)
         self.api = faucet_experimental_api.FaucetExperimentalAPI()
         self.metrics = faucet_metrics.FaucetMetrics(reg=self._reg)
-        self.bgp = None   #faucet_bgp.FaucetBgp(self.logger, self.metrics, self._send_flow_msgs)
+        self.bgp = faucet_bgp.FaucetBgp(self.logger, self.metrics, self._send_flow_msgs)
         self.notifier = faucet_experimental_event.FaucetExperimentalEventNotifier(
             self.get_setting('EVENT_SOCK'), self.metrics, self.logger)
         self.valves_manager = valves_manager.ValvesManager(

@@ -1905,7 +1905,7 @@ class FaucetConfigStatReloadAclTest(FaucetConfigReloadAclTest):
     STAT_RELOAD = '1'
 
 
-@unittest.skip('zof does not support BGP yet')
+#@unittest.skip('zof does not support BGP yet')
 class FaucetUntaggedBGPDualstackDefaultRouteTest(FaucetUntaggedTest):
     """Test IPv4 routing and import default route from BGP."""
 
@@ -1978,7 +1978,7 @@ vlans:
         self.coldstart_conf()
 
 
-@unittest.skip('zof does not support BGP yet')
+#@unittest.skip('zof does not support BGP yet')
 class FaucetUntaggedBGPIPv4DefaultRouteTest(FaucetUntaggedTest):
     """Test IPv4 routing and import default route from BGP."""
 
@@ -2051,7 +2051,7 @@ vlans:
         self.coldstart_conf()
 
 
-@unittest.skip('zof does not support BGP yet')
+#@unittest.skip('zof does not support BGP yet')
 class FaucetUntaggedBGPIPv4RouteTest(FaucetUntaggedTest):
     """Test IPv4 routing and import from BGP."""
 
@@ -2135,7 +2135,7 @@ vlans:
             self.one_ipv4_controller_ping(host)
 
 
-@unittest.skip('zof does not support BGP yet')
+#@unittest.skip('zof does not support BGP yet')
 class FaucetUntaggedIPv4RouteTest(FaucetUntaggedTest):
     """Test IPv4 routing and export to BGP."""
 
@@ -4565,7 +4565,7 @@ vlans:
         self.one_ipv6_ping(second_host, first_host_net.ip)
 
 
-@unittest.skip('zof does not support BGP yet')
+#@unittest.skip('zof does not support BGP yet')
 class FaucetUntaggedBGPIPv6DefaultRouteTest(FaucetUntaggedTest):
 
     CONFIG_GLOBAL = """
@@ -4637,7 +4637,7 @@ vlans:
         self.coldstart_conf()
 
 
-@unittest.skip('zof does not support BGP yet')
+#@unittest.skip('zof does not support BGP yet')
 class FaucetUntaggedBGPIPv6RouteTest(FaucetUntaggedTest):
 
     CONFIG_GLOBAL = """
@@ -4764,7 +4764,7 @@ vlans:
         self.one_ipv6_ping(second_host, first_host_ctrl_ip)
 
 
-@unittest.skip('zof does not support BGP yet')
+#@unittest.skip('zof does not support BGP yet')
 class FaucetUntaggedIPv6RouteTest(FaucetUntaggedTest):
 
     CONFIG_GLOBAL = """
