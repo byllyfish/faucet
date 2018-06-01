@@ -52,7 +52,9 @@ class ofp(object):
     @staticmethod
     def port_reason(value):
         """Convert OFPPR reason string to integer."""
-        assert isinstance(value, (str, int)), repr(value)
+        if isinstance(value, int):
+            return value
+        assert isinstance(value, str)
         reasons = {'ADD': 0, 'DELETE': 1, 'MODIFY': 2}
         if value in reasons:
             return reasons[value]

@@ -12,7 +12,7 @@ for src_dir in clib faucet tests ; do
         echo pylint $f: $rating
         if [ $(bc <<< "$rating < $MINRATING") -eq 1 ] ; then
             echo "$rating below min ($MINRATING)"
-            #exit 1
+            exit 1
         fi
    done
 done
