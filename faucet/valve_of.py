@@ -211,7 +211,7 @@ def set_eth_dst(eth_dst):
 def set_field(**kwds):
     """Return action to set arbitrary field."""
     assert len(kwds) == 1
-    field, value = next(iter(kwds.items()))
+    field, value = list(kwds.items())[0]
     test_config_condition(field not in MATCH_FIELDS, 'Unknown field name')
     return {'action':'SET_FIELD', 'field': field.upper(), 'value': value}
 
@@ -705,7 +705,7 @@ def _hash_wrap(value):
     Value is independent of iteration order for dicts, lists or tuples.
     """
     if isinstance(value, (dict, PktView)):
-        return sum(hash(k) * 11 + _hash_wrap(v) * 7 for k, v in value.items())
+        return sum(hash(k) * 11 + _hash_wrap(v) * 7 for k, v in list(value.items()))
     if isinstance(value, (list, tuple)):
         return sum(_hash_wrap(v) * 7 for v in value)
     return hash(value)

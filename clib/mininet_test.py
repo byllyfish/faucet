@@ -48,6 +48,8 @@ SUPPORTS_METERS = (
     'Open vSwitch',
 )
 
+# Use Python3 version of 2to3; Py2 version can't parse async/await syntax.
+PY3_2TO3 = '2to3-3.5'
 
 EXTERNAL_DEPENDENCIES = (
     ('ovs-vsctl', ['--version'], 'Open vSwitch',
@@ -56,7 +58,7 @@ EXTERNAL_DEPENDENCIES = (
      r'tcpdump\s+version\s+(\d+\.\d+)\.\d+\n', "4.5"),
     ('nc', ['-h'], 'OpenBSD netcat', '', 0),
     ('vconfig', [], 'the VLAN you are talking about', '', 0),
-    ('2to3', ['--help'], 'Usage: 2to3', '', 0),
+    (PY3_2TO3, ['--help'], 'Usage: 2to3', '', 0),
     ('fuser', ['-V'], r'fuser \(PSmisc\)',
      r'fuser \(PSmisc\) (\d+\.\d+)\n', "22.0"),
     ('lsof', ['-v'], r'lsof version',
@@ -219,7 +221,7 @@ def lint_check():
             return False
     for faucet_src in FAUCET_LINT_SRCS:
         output_2to3 = subprocess.check_output(
-            ['2to3', '--nofix=import', faucet_src],
+            [PY3_2TO3, '--nofix=import', faucet_src],
             stdin=mininet_test_util.DEVNULL,
             stderr=mininet_test_util.DEVNULL,
             close_fds=True)
