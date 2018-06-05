@@ -22,22 +22,37 @@ import os
 import signal
 import sys
 from functools import wraps
+import asyncio
 
 
 def kill_on_exception(logname):
     """decorator to ensure functions will kill ryu when an unhandled exception
     occurs"""
     def _koe(func):
+        def __die():
+            logging.getLogger(logname).exception(
+                'Unhandled exception, killing Faucet')
+            logging.shutdown()
+            os.kill(os.getpid(), signal.SIGTERM)
+
         @wraps(func)
         def __koe(*args, **kwargs):
             try:
                 func(*args, **kwargs)
             except:
-                logging.getLogger(logname).exception(
-                    'Unhandled exception, killing RYU')
-                logging.shutdown()
-                os.kill(os.getpid(), signal.SIGTERM)
-        return __koe
+                __die()
+
+        @wraps(func)
+        async def __akoe(*args, **kwargs):
+            try:
+                await func(*args, **kwargs)
+            except asyncio.CancelledError:
+                pass
+            except:
+                __die()
+
+        return __akoe if asyncio.iscoroutinefunction(func) else __koe
+
     return _koe
 
 
