@@ -9,9 +9,8 @@ netifaces
 networkx
 packaging
 prometheus_client
+psutil
 pylint
 pytest-cov
 pyyaml
 requests
-ryu==4.25
-beka==0.3.3
