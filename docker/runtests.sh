@@ -73,7 +73,7 @@ service docker start
 
 echo "========== Running faucet system tests =========="
 test_failures=
-export PYTHONPATH=/faucet-src
+export PYTHONPATH=/faucet-src:/faucet-src/src/zof
 
 cd /faucet-src/tests
 python2 ./faucet_mininet_test.py -c

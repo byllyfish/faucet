@@ -25,7 +25,7 @@ import requests
 from requests.exceptions import ConnectionError, ReadTimeout
 
 # pylint: disable=import-error
-from ryu.ofproto import ofproto_v1_3 as ofp
+from faucet.zof_constant import ofp
 from mininet.link import TCLink
 from mininet.log import error, output
 from mininet.net import Mininet
@@ -37,6 +37,19 @@ import netifaces
 import mininet_test_util
 import mininet_test_topo
 from tcpdump_helper import TcpdumpHelper
+
+# Import a sub-module from zof (a Python3-only framework) without loading
+# zof package itself.
+
+def _load_module(name):
+    import imp
+    path = None
+    for name in name.split('.'):
+        f, path, info = imp.find_module(name, path)
+        path = [path]
+    return imp.load_module(name, f, path[0], info)
+
+convert_from_ofctl = _load_module('zof.ofctl').convert_from_ofctl
 
 
 PEER_BGP_AS = 2**16 + 1
@@ -465,10 +478,19 @@ class FaucetTestBase(unittest2.TestCase):
                   'config': str(config), 'mask': str(mask)})
 
     @staticmethod
-    def _signal_proc_on_port(host, port, signal):
+    def _signal_proc_on_port(host, port, signal, parent=False):
         tcp_pattern = '%s/tcp' % port
-        fuser_out = host.cmd('fuser %s -k -%u' % (tcp_pattern, signal))
-        return re.search(r'%s:\s+\d+' % tcp_pattern, fuser_out)
+        if parent:
+            # For zof, we really need to signal the *parent* process.
+            fuser_out = host.cmd('fuser %s' % tcp_pattern)
+            m = re.search(r'%s:\s+(\d+)' % tcp_pattern, fuser_out)
+            if not m:
+                return False
+            kill_out = host.cmd('kill -%u `ps -o ppid= %s`' % (signal, m.group(1)))
+            return True
+        else:
+            fuser_out = host.cmd('fuser %s -k -%u' % (tcp_pattern, signal))
+            return re.search(r'%s:\s+\d+' % tcp_pattern, fuser_out)
 
     def _get_ofchannel_logs(self):
         with open(self.env['faucet']['FAUCET_CONFIG']) as config_file:
@@ -681,24 +703,8 @@ dbs:
     def get_matching_flows_on_dpid(self, dpid, match, timeout=10, table_id=None,
                                    actions=None, match_exact=False, hard_timeout=0,
                                    cookie=None):
-
-        # TODO: Ryu ofctl serializes to old matches.
-        def to_old_match(match):
-            old_matches = {
-                'tcp_dst': 'tp_dst',
-                'ip_proto': 'nw_proto',
-                'eth_dst': 'dl_dst',
-                'eth_type': 'dl_type',
-            }
-            if match is not None:
-                for new_match, old_match in list(old_matches.items()):
-                    if new_match in match:
-                        match[old_match] = match[new_match]
-                        del match[new_match]
-            return match
-
         flowdump = os.path.join(self.tmpdir, 'flowdump-%s.txt' % dpid)
-        match = to_old_match(match)
+        match = convert_from_ofctl(match)
 
         with open(flowdump, 'w') as flowdump_file:
             for _ in range(timeout):
@@ -1033,12 +1039,12 @@ dbs:
         """Send a HUP signal to the controller."""
         controller = self._get_controller()
         self.assertTrue(
-            self._signal_proc_on_port(controller, controller.port, 1))
+            self._signal_proc_on_port(controller, controller.port, 1, True))
 
     def hup_gauge(self):
         self.assertTrue(
             self._signal_proc_on_port(
-                self.gauge_controller, int(self.gauge_of_port), 1))
+                self.gauge_controller, int(self.gauge_of_port), 1, True))
 
     def reload_conf(self, yaml_conf, conf_path, restart, cold_start,
                     change_expected=True, host_cache=None, hup=True):
