@@ -10,10 +10,9 @@ netifaces
 networkx
 packaging
 prometheus_client
+psutil
 pylint
 pytest-cov
 pytype==2018.6.19
 pyyaml
 requests
-ryu==4.26
-beka==0.3.3

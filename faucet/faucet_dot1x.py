@@ -17,10 +17,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import eventlet
-eventlet.monkey_patch()
+#import eventlet
+#eventlet.monkey_patch()
 
-from ryu.lib import hub # pylint: disable=wrong-import-position
+#from ryu.lib import hub # pylint: disable=wrong-import-position
+import zof
 
 from chewie.chewie import Chewie # pylint: disable=wrong-import-position
 from chewie.mac_address import MacAddress # pylint: disable=wrong-import-position
@@ -48,7 +49,7 @@ class FaucetDot1x(object):
             self.dot1x_intf, self.CREDENTIALS,
             self.logger, self.auth_handler,
             MacAddress.from_string('00:00:00:00:00:01'))
-        hub.spawn(chewie.run)
+        zof.ensure_future(chewie.run())
         return chewie
 
     def auth_handler(self, address, _group_address):

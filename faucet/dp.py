@@ -618,10 +618,10 @@ configuration.
                             2**16-1, self.meters, acl.exact_match,
                             vlan_vid=vid)
                         test_config_condition(not ofmsgs, 'of messages is empty')
-                        for ofmsg in ofmsgs:
-                            ofmsg.datapath = NullRyuDatapath()
-                            ofmsg.set_xid(0)
-                            ofmsg.serialize()
+                        #for ofmsg in ofmsgs:
+                        #    ofmsg.datapath = NullRyuDatapath()
+                        #    ofmsg.set_xid(0)
+                        #    ofmsg.serialize()
                     except (AddrFormatError, KeyError, ValueError) as err:
                         raise InvalidConfigError(err)
                     for port_no in mirror_destinations:
