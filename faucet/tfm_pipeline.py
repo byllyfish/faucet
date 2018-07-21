@@ -2,12 +2,14 @@
 
 import json
 import os
+import yaml
 
 from faucet import valve_of
 
 
 class LoadRyuTables:
     """Serialize table features messages from JSON."""
+    # pylint: disable=no-member
 
     _DYNAMIC_FEATURES = frozenset([
         'OFPTFPT_NEXT_TABLES',
@@ -253,3 +255,69 @@ class OpenflowToRyuTranslator:
                 'type': type_id}}
 
         return new_table_feature
+
+
+class LoadZofTables(object):
+    """Serialize table features messages from YAML."""
+
+    def __init__(self, cfgpath, pipeline_conf):
+        pipeline_config = os.path.join(cfgpath, pipeline_conf)
+        with open(pipeline_config) as stream:
+            self.ofmsg = yaml.safe_load(stream)
+            assert isinstance(self.ofmsg, dict), '%s != dict' % type(self.ofmsg)
+
+    def load_tables(self, active_table_ids, dp):
+        """Return table features message with active table_id's only.
+
+        We remove inactive tables from the TFM.
+
+        TFM entries have the following values magically added:
+            - name
+            - config=['0x03']
+            - metadata_match=0
+            - metadata_write=0
+            - next_tables
+            - match (only for restricted_match_types)
+            - wildcards (only for restricted_match_types)
+            - instructions (only for restricted_match_types)
+        """
+        # The following code modifies the existing table objects in place.
+        tables = []
+        for table in self.ofmsg['msg']:
+            table_id = table['table_id']
+            if table_id not in active_table_ids:
+                continue
+            valve_table = dp.table_by_id(table_id)
+            table['name'] = valve_table.name
+            table['next_tables'] = sorted([tid for tid in active_table_ids if tid > table_id])
+            if valve_table.restricted_match_types is not None:
+                self.add_restricted_matches(table, valve_table.restricted_match_types)
+            table.update(config=['0x03'], metadata_match=0, metadata_write=0)
+            tables.append(table)
+        # Return a mutated copy of the message.
+        ofmsg = self.ofmsg.copy()
+        ofmsg['msg'] = tables
+        return ofmsg
+
+    @staticmethod
+    def add_restricted_matches(table, restricted_match_types):
+        """Handle table entries with restricted match types."""
+        oxm_ids = [_oxmid(match_type, hasmask) for match_type, hasmask 
+                   in restricted_match_types.items()]
+        table['match'] = oxm_ids
+        table['wildcards'] = oxm_ids
+        # Instructions depends on whether there is a next_table.
+        if table['next_tables']:
+            instrs = ['APPLY_ACTIONS', 'GOTO_TABLE']
+        else:
+            instrs = ['APPLY_ACTIONS']
+        table['instructions'] = instrs
+
+
+def _oxmid(match_type, hasmask):
+    """Convert to zof OXM ID format (where appended slash indicates mask)."""
+    if hasmask:
+        return '%s/' % match_type.upper()
+    return match_type.upper()
+
+

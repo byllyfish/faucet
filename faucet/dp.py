@@ -641,19 +641,20 @@ configuration.
                             vlan_vid=vid)
                         test_config_condition(not ofmsgs, 'OF messages is empty')
                         for ofmsg in ofmsgs:
-                            ofmsg.datapath = NullRyuDatapath()
-                            ofmsg.set_xid(0)
-                            ofmsg.serialize()
+                            #ofmsg.datapath = NullRyuDatapath()
+                            #ofmsg.set_xid(0)
+                            #ofmsg.serialize()
                             if valve_of.is_flowmod(ofmsg):
                                 apply_actions = []
                                 for inst in ofmsg.instructions:
                                     if valve_of.is_apply_actions(inst):
-                                        apply_actions.extend(inst.actions)
+                                        apply_actions.extend(inst['actions'])
                                 for action in apply_actions:
                                     if valve_of.is_set_field(action):
-                                        set_fields.append(action.key)
-                                for match, value in list(ofmsg.match.items()):
-                                    has_mask = isinstance(value, tuple)
+                                        set_fields.append(action['field'])
+                                for field in ofmsg['msg']['match']:
+                                    has_mask = 'mask' in field
+                                    match = field['field']
                                     if match in matches:
                                         if has_mask:
                                             matches[match] = has_mask
