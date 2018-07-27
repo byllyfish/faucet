@@ -78,7 +78,16 @@ class mac:
 
     @staticmethod
     def text_to_bin(val):
-        return bytes.fromhex(val.replace(':', ''))
+        mac_bin = bytes.fromhex(val.replace(':', ''))
+        if len(mac_bin) != 6:
+            raise ValueError('Invalid mac address: %s' % val)
+        return mac_bin
+
+    @staticmethod
+    def is_multicast(val):
+        """Return true if value is a multicast MAC address."""
+        mac_bin = mac.text_to_bin(val)
+        return (mac_bin[0] & 0x01) != 0
 
 
 class inet:

@@ -151,10 +151,7 @@ def mac_addr_is_unicast(mac_addr):
     Returns:
         bool: True if a unicast Ethernet address.
     """
-    mac_bin = haddr_to_bin(mac_addr)
-    if mac_bin == BROADCAST:
-        return False
-    return not is_multicast(mac_bin)
+    return not mac.is_multicast(mac_addr)
 
 
 def build_pkt_header(vid, eth_src, eth_dst, dl_type):
