@@ -266,7 +266,7 @@ class LoadZofTables(object):
             self.ofmsg = yaml.safe_load(stream)
             assert isinstance(self.ofmsg, dict), '%s != dict' % type(self.ofmsg)
 
-    def load_tables(self, active_table_ids, dp):
+    def load_tables(self, dp):
         """Return table features message with active table_id's only.
 
         We remove inactive tables from the TFM.
@@ -277,10 +277,11 @@ class LoadZofTables(object):
             - metadata_match=0
             - metadata_write=0
             - next_tables
-            - match (only for restricted_match_types)
-            - wildcards (only for restricted_match_types)
-            - instructions (only for restricted_match_types)
+            - match (only for match_types)
+            - wildcards (only for match_types)
+            - instructions (only for match_types)
         """
+        active_table_ids = frozenset([table.table_id for table in dp.tables.values()])
         # The following code modifies the existing table objects in place.
         tables = []
         for table in self.ofmsg['msg']:
@@ -289,35 +290,33 @@ class LoadZofTables(object):
                 continue
             valve_table = dp.table_by_id(table_id)
             table['name'] = valve_table.name
+            # Match types
+            if valve_table.match_types:
+                oxm_ids = [_oxmid(match_type, hasmask) for match_type, hasmask 
+                           in valve_table.match_types.items()]
+                table['match'] = oxm_ids
+                # Not an exact match table, assume all fields wildcarded.
+                if not valve_table.exact_match:
+                    table['wildcards'] = oxm_ids
+            # Set fields
+            if valve_table.set_fields:
+                oxm_ids = [_oxmid(field) for field in valve_table.set_fields]
+                table['apply_set_field'] = oxm_ids
+            # Next tables
             table['next_tables'] = sorted([tid for tid in active_table_ids if tid > table_id])
-            if valve_table.restricted_match_types is not None:
-                self.add_restricted_matches(table, valve_table.restricted_match_types)
+            # Instructions
+            insts = ['APPLY_ACTIONS']
+            if table['next_tables']:
+                insts.append('GOTO_TABLE')
+            table['instructions'] = insts
+            # Default remaining properties.
             table.update(config=['0x03'], metadata_match=0, metadata_write=0)
             tables.append(table)
-        # Return a mutated copy of the message.
-        ofmsg = self.ofmsg.copy()
-        ofmsg['msg'] = tables
-        return ofmsg
-
-    @staticmethod
-    def add_restricted_matches(table, restricted_match_types):
-        """Handle table entries with restricted match types."""
-        oxm_ids = [_oxmid(match_type, hasmask) for match_type, hasmask 
-                   in restricted_match_types.items()]
-        table['match'] = oxm_ids
-        table['wildcards'] = oxm_ids
-        # Instructions depends on whether there is a next_table.
-        if table['next_tables']:
-            instrs = ['APPLY_ACTIONS', 'GOTO_TABLE']
-        else:
-            instrs = ['APPLY_ACTIONS']
-        table['instructions'] = instrs
+        return tables
 
 
-def _oxmid(match_type, hasmask):
+def _oxmid(match_type, hasmask=False):
     """Convert to zof OXM ID format (where appended slash indicates mask)."""
     if hasmask:
         return '%s/' % match_type.upper()
     return match_type.upper()
-
-

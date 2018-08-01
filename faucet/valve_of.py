@@ -167,12 +167,11 @@ def is_apply_actions(instruction):
     Returns:
         bool: True if an apply action.
     """
-    return (isinstance(instruction, parser.OFPInstructionActions) and
-            instruction.type == ofp.OFPIT_APPLY_ACTIONS)
+    return instruction['instruction'] == 'APPLY_ACTIONS'
 
 
 def is_set_field(action):
-    return isinstance(action, parser.OFPActionSetField)
+    return action['action'] == 'SET_FIELD'
 
 
 def apply_meter(meter_id):

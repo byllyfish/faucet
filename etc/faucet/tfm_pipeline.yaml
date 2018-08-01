@@ -4,28 +4,13 @@ msg:
     max_entries:     0x00000032
     instructions:    [ GOTO_TABLE, APPLY_ACTIONS, METER ]
     apply_actions:   [ OUTPUT, PUSH_VLAN, POP_VLAN, GROUP, SET_FIELD ]
-    match:           [ IN_PORT, ETH_TYPE, ETH_DST/, ETH_SRC/, VLAN_VID, 
-                       IP_PROTO, UDP_SRC, UDP_DST, TCP_SRC, TCP_DST, ARP_TPA/ ]
-    wildcards:       [ IN_PORT, ETH_TYPE, ETH_DST/, ETH_SRC/, VLAN_VID, 
-                       IP_PROTO, UDP_SRC, UDP_DST, TCP_SRC, TCP_DST, ARP_TPA/ ]
-    write_set_field: [  ]
-    apply_set_field: [ ETH_DST, ETH_SRC, VLAN_VID, IP_DSCP, IPV4_SRC, IPV4_DST, 
-                       TCP_SRC, TCP_DST, UDP_SRC, UDP_DST ]
   - table_id:        0x01
     max_entries:     0x00000064
     apply_actions:   [ OUTPUT, PUSH_VLAN, SET_FIELD ]
-    apply_set_field: [ VLAN_VID ]
   - table_id:        0x02
     max_entries:     0x00000032
     instructions:    [ GOTO_TABLE, APPLY_ACTIONS, METER ]
     apply_actions:   [ OUTPUT, PUSH_VLAN, POP_VLAN, GROUP, SET_FIELD ]
-    match:           [ IN_PORT, ETH_TYPE, ETH_DST/, ETH_SRC/, VLAN_VID, 
-                       IP_PROTO, IPV4_DST/, IPV6_DST/, UDP_SRC, UDP_DST, 
-                       TCP_SRC, TCP_DST ]
-    wildcards:       [ IN_PORT, ETH_TYPE, ETH_DST/, ETH_SRC/, VLAN_VID, 
-                       IP_PROTO, IPV4_DST/, IPV6_DST/, UDP_SRC, UDP_DST, 
-                       TCP_SRC, TCP_DST ]
-    apply_set_field: [ ETH_DST, ETH_SRC, VLAN_VID ]
   - table_id:        0x03
     max_entries:     0x00000064
     instructions_miss: [ GOTO_TABLE ]
@@ -34,11 +19,9 @@ msg:
   - table_id:        0x04
     max_entries:     0x00000064
     apply_actions:   [ GROUP, DEC_NW_TTL, SET_FIELD ]
-    apply_set_field: [ ETH_DST, ETH_SRC, VLAN_VID ]
   - table_id:        0x05
     max_entries:     0x00000064
     apply_actions:   [ GROUP, DEC_NW_TTL, SET_FIELD ]
-    apply_set_field: [ ETH_DST, ETH_SRC, VLAN_VID ]
   - table_id:        0x06
     max_entries:     0x00000014
     apply_actions:   [ OUTPUT ]

@@ -646,7 +646,7 @@ configuration.
                             #ofmsg.serialize()
                             if valve_of.is_flowmod(ofmsg):
                                 apply_actions = []
-                                for inst in ofmsg.instructions:
+                                for inst in ofmsg['msg']['instructions']:
                                     if valve_of.is_apply_actions(inst):
                                         apply_actions.extend(inst['actions'])
                                 for action in apply_actions:
