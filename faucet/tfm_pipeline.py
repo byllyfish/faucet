@@ -5,6 +5,7 @@ from faucet import valve_of
 
 class LoadRyuTables:
     """Serialize table features messages from JSON."""
+    # pylint: disable=no-member
 
     @staticmethod
     def load_tables(dp): # pylint: disable=invalid-name
@@ -89,3 +90,74 @@ class LoadRyuTables:
 
             table_array.append(new_table)
         return table_array
+
+
+class LoadZofTables(object):
+    """Serialize table features message."""
+
+    @staticmethod
+    def load_tables(dp): # pylint: disable=invalid-name
+        """Return table features message with active table_id's only."""
+        table_array = []
+        active_table_ids = sorted([valve_table.table_id for valve_table in dp.tables.values()])
+        for table_id in active_table_ids:
+            valve_table = dp.table_by_id(table_id)
+            new_table = {
+                'config': ['0x03'],
+                'max_entries': valve_table.table_config.size,
+                'metadata_match': 0,
+                'metadata_write': 0,
+                'name': valve_table.name,
+                'table_id': table_id,
+                'write_actions': [],
+                'write_set_field': [],
+                'apply_set_field': [],
+                'wildcards': [],
+            }
+            # Match types
+            if valve_table.match_types:
+                oxm_ids = [_oxmid(match_type, hasmask) for match_type, hasmask 
+                           in valve_table.match_types.items()]
+                new_table['match'] = oxm_ids
+                # Not an exact match table, assume all fields wildcarded.
+                if not valve_table.exact_match:
+                    new_table['wildcards'] = oxm_ids
+            # Next tables
+            next_tables = [tid for tid in active_table_ids if tid > table_id]
+            new_table['next_tables'] = next_tables
+            # Instructions
+            insts = ['APPLY_ACTIONS']
+            if next_tables:
+                insts.append('GOTO_TABLE')
+            if valve_table.table_config.meter:
+                insts.append('METER')
+            new_table['instructions'] = insts
+            apply_actions = []
+            # Set fields and apply actions
+            if valve_table.set_fields:
+                apply_actions.append('SET_FIELD')
+                # TODO: only select push_vlan when VLAN VID in set_fields.
+                apply_actions.append('PUSH_VLAN')
+                oxm_ids = [_oxmid(field) for field in valve_table.set_fields]
+                new_table['apply_set_field'] = oxm_ids
+            if valve_table.table_config.output:
+                apply_actions.append('OUTPUT')
+                apply_actions.append('POP_VLAN')
+                if dp.group_table or dp.group_table_routing:
+                    apply_actions.append('GROUP')
+            new_table['apply_actions'] = apply_actions
+            # Miss goto table option.
+            if valve_table.table_config.miss_goto:
+                miss_table_id = dp.tables[valve_table.table_config.miss_goto].table_id
+                new_table['next_tables_miss'] = [miss_table_id]
+                new_table['instructions_miss'] = ['GOTO_TABLE']
+
+            table_array.append(new_table)
+        return table_array
+
+
+def _oxmid(match_type, hasmask=False):
+    """Convert to zof OXM ID format (where appended slash indicates mask)."""
+    if hasmask:
+        return '%s/' % match_type.upper()
+    return match_type.upper()

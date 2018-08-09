@@ -1,0 +1,33 @@
+type:            REQUEST.TABLE_FEATURES
+msg:             
+  - table_id:        0x00
+    max_entries:     0x0000044C
+    instructions:    [ GOTO_TABLE, APPLY_ACTIONS ]
+    apply_actions:   [ OUTPUT, PUSH_VLAN, POP_VLAN, GROUP, SET_FIELD ]
+  - table_id:        0x01
+    max_entries:     0x0000012C
+    apply_actions:   [ OUTPUT, PUSH_VLAN, SET_FIELD ]
+  - table_id:        0x02
+    max_entries:     0x00000032
+    instructions:    [ GOTO_TABLE, APPLY_ACTIONS ]
+    apply_actions:   [ OUTPUT, PUSH_VLAN, POP_VLAN, GROUP, SET_FIELD ]
+  - table_id:        0x03
+    max_entries:     0x00000190
+    instructions_miss: [ GOTO_TABLE ]
+    next_tables_miss: [ 7 ]
+    apply_actions:   [ OUTPUT ]
+  - table_id:        0x04
+    max_entries:     0x00000064
+    apply_actions:   [ GROUP, DEC_NW_TTL, SET_FIELD ]
+  - table_id:        0x05
+    max_entries:     0x00000064
+    apply_actions:   [ GROUP, DEC_NW_TTL, SET_FIELD ]
+  - table_id:        0x06
+    max_entries:     0x00000014
+    apply_actions:   [ OUTPUT ]
+  - table_id:        0x07
+    max_entries:     0x0000012C
+    apply_actions:   [ OUTPUT, POP_VLAN ]
+  - table_id:        0x08
+    max_entries:     0x00000190
+    apply_actions:   [ OUTPUT, POP_VLAN, GROUP ]

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-MINCOVERAGE=92
+MINCOVERAGE=90
 SCRIPTPATH=$(readlink -f "$0")
 TESTDIR=`dirname $SCRIPTPATH`
 BASEDIR=`readlink -f $TESTDIR/..`
