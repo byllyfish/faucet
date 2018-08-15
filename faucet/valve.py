@@ -434,11 +434,11 @@ class Valve:
         """Handle OF DP description."""
         labels = dict(
             self.base_prom_labels,
-            mfr_desc=valve_util.utf8_decode(body.mfr_desc),
-            hw_desc=valve_util.utf8_decode(body.hw_desc),
-            sw_desc=valve_util.utf8_decode(body.sw_desc),
-            serial_num=valve_util.utf8_decode(body.serial_num),
-            dp_desc=valve_util.utf8_decode(body.dp_desc))
+            mfr_desc=body['mfr_desc'],
+            hw_desc=body['hw_desc'],
+            sw_desc=body['sw_desc'],
+            serial_num=body['serial_num'],
+            dp_desc=body['dp_desc'])
         self._set_var('of_dp_desc_stats', self.dp.dp_id, labels=labels)
 
     def _set_port_status(self, port_no, port_status):
@@ -524,7 +524,7 @@ class Valve:
             system_name=system_name,
             port_descr=port.lldp_beacon['port_descr'])
         port.dyn_last_lldp_beacon_time = now
-        return valve_of.packetout(port.number, lldp_beacon_pkt.data)
+        return valve_of.packetout(port.number, lldp_beacon_pkt)
 
     def send_lldp_beacons(self, now, _other_valves):
         """Called periodically to send LLDP beacon packets."""
@@ -728,7 +728,7 @@ class Valve:
         for port_num in port_nums:
             if port_num not in self.dp.ports:
                 self.logger.info(
-                    'Ignoring port:%u not present in configuration file' % port_num)
+                    'Ignoring port:%s not present in configuration file' % port_num)
                 continue
 
             port = self.dp.ports[port_num]
@@ -916,7 +916,7 @@ class Valve:
                     lacp_pkt.actor_state_aggregation,
                     lacp_pkt.actor_state_synchronization,
                     lacp_pkt.actor_state_activity)
-                ofmsgs.append(valve_of.packetout(pkt_meta.port.number, pkt.data))
+                ofmsgs.append(valve_of.packetout(pkt_meta.port.number, pkt))
         return ofmsgs
 
     def _verify_stack_lldp(self, port, now, other_valves,
@@ -1073,8 +1073,8 @@ class Valve:
         Returns:
             PacketMeta instance.
         """
-        eth_src = eth_pkt.src
-        eth_dst = eth_pkt.dst
+        eth_src = eth_pkt.eth_src
+        eth_dst = eth_pkt.eth_dst
         vlan = None
         if vlan_vid in self.dp.vlans:
             vlan = self.dp.vlans[vlan_vid]
@@ -1095,26 +1095,24 @@ class Valve:
         """Parse OF packet-in message to PacketMeta."""
         if not self.dp.dyn_running:
             return None
-        if self.dp.cookie != msg.cookie:
-            self.logger.info('got packet in with unknown cookie %s' % msg.cookie)
+        if self.dp.cookie != msg['cookie']:
+            self.logger.info('got packet in with unknown cookie %s' % msg['cookie'])
             return None
         # Drop any packet we didn't specifically ask for
-        if msg.reason != valve_of.ofp.OFPR_ACTION:
+        if msg['reason'] != valve_of.ofp.OFPR_ACTION:
             return None
-        if not msg.match:
-            return None
-        in_port = msg.match['in_port']
+        in_port = msg['in_port']
         if not in_port or not self.port_no_valid(in_port):
             return None
 
-        if not msg.data:
-            return None
+        #if not msg['data']:
+        #    return None
         # Truncate packet in data (OVS > 2.5 does not honor max_len)
-        data = msg.data[:valve_of.MAX_PACKET_IN_BYTES]
+        #data = msg.data[:valve_of.MAX_PACKET_IN_BYTES]
 
         # eth/VLAN header only
         pkt, eth_pkt, eth_type, vlan_vid = valve_packet.parse_packet_in_pkt(
-            data, max_len=valve_packet.ETH_VLAN_HEADER_SIZE)
+            msg['pkt'], max_len=valve_packet.ETH_VLAN_HEADER_SIZE)
         if pkt is None or eth_pkt is None:
             self.logger.info(
                 'unparseable packet from port %u' % in_port)
@@ -1126,7 +1124,7 @@ class Valve:
                 'packet for unknown VLAN %u' % vlan_vid)
             return None
         pkt_meta = self.parse_rcv_packet(
-            in_port, vlan_vid, eth_type, data, msg.total_len, pkt, eth_pkt)
+            in_port, vlan_vid, eth_type, b'', 0, pkt, eth_pkt)
         if not valve_packet.mac_addr_is_unicast(pkt_meta.eth_src):
             self.logger.info(
                 'packet with non-unicast eth_src %s port %u' % (
@@ -1293,7 +1291,7 @@ class Valve:
 
     def _pipeline_change(self):
         def table_msgs(tfm_flow):
-            return {str(x) for x in tfm_flow.body}
+            return {str(x) for x in tfm_flow['msg']}
 
         if self._last_pipeline_flows:
             _last_pipeline_flows = table_msgs(self._last_pipeline_flows[0])
@@ -1456,7 +1454,7 @@ class Valve:
             msg (ryu.controller.ofp_event.EventOFPMsgBase): message from datapath.
         """
         self._inc_var('of_errors')
-        orig_msgs = [orig_msg for orig_msg in self.recent_ofmsgs if orig_msg.xid == msg.xid]
+        orig_msgs = [orig_msg for orig_msg in self.recent_ofmsgs if orig_msg.get('xid') == msg['xid']]
         error_txt = msg
         if orig_msgs:
             error_txt = '%s caused by %s' % (error_txt, orig_msgs[0])
@@ -1483,7 +1481,6 @@ class Valve:
             flow_msgs (list): OpenFlow messages to send.
         """
         for flow_msg in self.prepare_send_flows(flow_msgs):
-            flow_msg.datapath = ryu_dp
             ryu_dp.send_msg(flow_msg)
 
     def flow_timeout(self, now, table_id, match):
@@ -1507,9 +1504,9 @@ class TfmValve(Valve):
     """Valve implementation that uses OpenFlow send table features messages."""
 
     def _pipeline_flows(self):
-        ryu_table_loader = tfm_pipeline.LoadRyuTables()
+        zof_table_loader = tfm_pipeline.LoadZofTables()
         return [valve_of.table_features(
-            ryu_table_loader.load_tables(self.dp))]
+            zof_table_loader.load_tables(self.dp))]
 
     def _add_default_flows(self):
         ofmsgs = self._pipeline_flows()

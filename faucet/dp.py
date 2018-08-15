@@ -714,24 +714,25 @@ configuration.
                         raise InvalidConfigError(err)
                     test_config_condition(not ofmsgs, 'OF messages is empty')
                     for ofmsg in ofmsgs:
-                        ofmsg.datapath = NullRyuDatapath()
-                        ofmsg.set_xid(0)
-                        try:
-                            ofmsg.serialize()
-                        except (KeyError, ValueError) as err:
-                            raise InvalidConfigError(err)
+                        #ofmsg.datapath = NullRyuDatapath() # FIXME(bfish)
+                        #ofmsg.set_xid(0)
+                        #try:
+                        #    ofmsg.serialize()
+                        #except (KeyError, ValueError) as err:
+                        #    raise InvalidConfigError(err)
                         if valve_of.is_flowmod(ofmsg):
                             apply_actions = []
-                            for inst in ofmsg.instructions:
+                            for inst in ofmsg['msg']['instructions']:
                                 if valve_of.is_apply_actions(inst):
-                                    apply_actions.extend(inst.actions)
+                                    apply_actions.extend(inst['actions'])
                                 elif valve_of.is_meter(inst):
                                     meter = True
                             for action in apply_actions:
                                 if valve_of.is_set_field(action):
-                                    set_fields.add(action.key)
-                            for match, value in list(ofmsg.match.items()):
-                                has_mask = isinstance(value, (tuple, list))
+                                    set_fields.add(action['field'])
+                            for field in ofmsg['msg']['match']:
+                                has_mask = 'mask' in field
+                                match = field['field'].lower()
                                 if has_mask or match not in matches:
                                     matches[match] = has_mask
                     for port_no in mirror_destinations:
