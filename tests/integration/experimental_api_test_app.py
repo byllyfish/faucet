@@ -3,19 +3,16 @@
 import os
 import unittest
 
-from ryu.base import app_manager
-from ryu.controller.handler import set_ev_cls
+import zof
 
-from faucet import faucet # pylint: disable=import-error
 from faucet import faucet_experimental_api # pylint: disable=import-error
 
 
-class TestFaucetExperimentalAPIViaRyu(app_manager.RyuApp):
-    """Test experimental API."""
+APP = zof.Application('test_faucet_experimental_api')
 
-    _CONTEXTS = {
-        'faucet_experimental_api': faucet_experimental_api.FaucetExperimentalAPI
-        }
+@APP.bind()
+class TestFaucetExperimentalAPIViaRyu:
+    """Test experimental API."""
 
     def _update_test_result(self, result):
         with open(self.result_file_name, 'w') as result_file:
@@ -23,14 +20,13 @@ class TestFaucetExperimentalAPIViaRyu(app_manager.RyuApp):
 
     def __init__(self, *args, **kwargs):
         super(TestFaucetExperimentalAPIViaRyu, self).__init__(*args, **kwargs)
-        self.faucet_experimental_api = kwargs['faucet_experimental_api']
         self.result_file_name = os.getenv('API_TEST_RESULT')
         self._update_test_result('not registered')
 
-    @set_ev_cls(faucet.EventFaucetExperimentalAPIRegistered)
-    def run_tests(self, _unused_ryu_event):
+    @APP.event('FAUCET_API_READY')
+    def run_tests(self, event):
         """Retrive config and ensure config for switch name is present."""
-        config = self.faucet_experimental_api.get_config()
+        config = event['faucet_api'].get_config()
         self._update_test_result('got config: %s' % config)
         try:
             assert 'faucet-1' in config['dps']
