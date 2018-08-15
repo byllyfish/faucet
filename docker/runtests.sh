@@ -78,7 +78,7 @@ service docker start
 echo "========== Running faucet system tests =========="
 test_failures=
 export FAUCET_DIR=/faucet-src/faucet
-export PYTHONPATH=/faucet-src
+export PYTHONPATH=/faucet-src:/faucet-src/src/zof
 
 cd /faucet-src/tests/integration
 python2 ./mininet_main.py -c
