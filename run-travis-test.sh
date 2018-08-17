@@ -27,7 +27,7 @@ else
   }
 
   shard "$ALLTESTS" ${MATRIX_SHARDS}
-  FAUCET_TESTS="-i ${sharded[${MATRIX_SHARD}]}"
+  FAUCET_TESTS="-i -d ${sharded[${MATRIX_SHARD}]}"
 fi
 
 echo Shard $MATRIX_SHARD: $FAUCETTESTS
