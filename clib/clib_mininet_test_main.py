@@ -547,10 +547,10 @@ def dump_failed_test(test_name, test_dir):
     print(test_name)
     print('=' * len(test_name))
     print('\n')
-    test_files = set(glob.glob(os.path.join(test_dir, '*')))
+    test_files = set(glob.glob(os.path.join(test_dir, 'faucet*')))
     dumped_test_files = set()
 
-    for only_exts in (['.yaml'], ['.log'], ['.cap.txt'], ['.txt']):
+    for only_exts in (['.yaml'], ['.log']):
         for test_file in sorted(test_files):
             if test_file in dumped_test_files:
                 continue
