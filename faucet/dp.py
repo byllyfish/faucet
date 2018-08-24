@@ -726,8 +726,6 @@ configuration.
                 port_acl_enabled = True
             if port_acl_enabled:
                 port_acl_matches.update({'in_port': False})
-            port_acl_matches = {(field, mask) for field, mask in list(port_acl_matches.items())}
-            vlan_acl_matches = {(field, mask) for field, mask in list(vlan_acl_matches.items())}
 
             # TODO: skip port_acl table if not configured.
             # TODO: dynamically configure output attribue
@@ -737,15 +735,15 @@ configuration.
                     exact_match=port_acl_exact_match,
                     meter=port_acl_meter,
                     output=True,
-                    match_types=port_acl_matches,
-                    set_fields=tuple(port_acl_set_fields)),
+                    match_types=tuple(sorted(port_acl_matches.items())),
+                    set_fields=tuple(sorted(port_acl_set_fields))),
                 'vlan_acl': ValveTableConfig(
                     'vlan_acl',
                     exact_match=vlan_acl_exact_match,
                     meter=vlan_acl_meter,
                     output=True,
-                    match_types=vlan_acl_matches,
-                    set_fields=tuple(vlan_acl_set_fields)),
+                    match_types=tuple(sorted(vlan_acl_matches.items())),
+                    set_fields=tuple(sorted(vlan_acl_set_fields))),
             }
             return override_table_config
 

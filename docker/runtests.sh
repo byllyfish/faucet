@@ -59,7 +59,7 @@ export LANG=en_US.UTF-8
 export LANGUAGE=en_US.en
 export LC_ALL=en_US.UTF-8
 
-export PYTHONPATH=/faucet-src:/faucet-src/faucet:/faucet-src/clib
+export PYTHONPATH=/faucet-src:/faucet-src/faucet:/faucet-src/clib:/faucet-src/src/zof
 
 if [ "$UNITTESTS" == 1 ] ; then
     echo "========== Running faucet unit tests =========="
