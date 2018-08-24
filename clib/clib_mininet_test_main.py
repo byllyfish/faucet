@@ -47,17 +47,17 @@ SUPPORTS_METERS = (
     'Open vSwitch',
 )
 
+# Use Python3 version of 2to3; Py2 version can't parse async/await syntax.
+PY3_2TO3 = '2to3-3.5'
 
 EXTERNAL_DEPENDENCIES = (
-    ('ryu-manager', ['--version'],
-     'ryu-manager', r'ryu-manager (\d+\.\d+)\n', "4.9"),
     ('ovs-vsctl', ['--version'], 'Open vSwitch',
      r'ovs-vsctl\s+\(Open vSwitch\)\s+(\d+\.\d+)\.\d+\n', "2.3"),
     ('tcpdump', ['-h'], 'tcpdump',
      r'tcpdump\s+version\s+(\d+\.\d+)\.\d+\n', "4.5"),
     ('nc', ['-h'], 'OpenBSD netcat', '', 0),
     ('vconfig', [], 'the VLAN you are talking about', '', 0),
-    ('2to3', ['--help'], 'Usage: 2to3', '', 0),
+    (PY3_2TO3, ['--help'], 'Usage: 2to3', '', 0),
     ('fuser', ['-V'], r'fuser \(PSmisc\)',
      r'fuser \(PSmisc\) (\d+\.\d+)\n', "22.0"),
     ('lsof', ['-v'], r'lsof version',
@@ -548,10 +548,10 @@ def dump_failed_test(test_name, test_dir):
     print(test_name)
     print('=' * len(test_name))
     print('\n')
-    test_files = set(glob.glob(os.path.join(test_dir, '*')))
+    test_files = set(glob.glob(os.path.join(test_dir, 'faucet*')))
     dumped_test_files = set()
 
-    for only_exts in (['.yaml'], ['.log'], ['.cap.txt'], ['.txt']):
+    for only_exts in (['.yaml'], ['.log']):
         for test_file in sorted(test_files):
             if test_file in dumped_test_files:
                 continue

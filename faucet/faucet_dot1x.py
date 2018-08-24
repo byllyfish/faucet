@@ -17,10 +17,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import eventlet
-eventlet.monkey_patch()
+#import eventlet
+#eventlet.monkey_patch()
 
-from ryu.lib import hub # pylint: disable=wrong-import-position
+#from ryu.lib import hub # pylint: disable=wrong-import-position
+import zof
 
 from chewie.chewie import Chewie # pylint: disable=wrong-import-position
 
@@ -42,7 +43,7 @@ class FaucetDot1x:
             dot1x_intf, self.logger,
             self.auth_handler, self.failure_handler, self.logoff_handler,
             '127.0.0.1')
-        hub.spawn(chewie.run)
+        zof.ensure_future(chewie.run())
         return chewie
 
     def get_valve_and_port(self, port_id):
