@@ -18,38 +18,31 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import asyncio
 import logging
 import random
-import signal
-import sys
 
-from ryu.base import app_manager
-from ryu.controller import dpset, event
-from ryu.controller.handler import set_ev_cls
-from ryu.lib import hub
+import zof
 
 from faucet import valve_of
 from faucet.valve_util import dpid_log, get_logger, get_setting
 
 
-class EventReconfigure(event.EventBase):
-    """Event sent to controller to cause config reload."""
-    pass
+class _DPSetAdapter:
+    """Adapt find_datapath to Ryu-like API."""
+    @staticmethod
+    def get(dp_id):
+        return zof.find_datapath(datapath_id=dp_id)
 
 
-class RyuAppBase(app_manager.RyuApp):
+class RyuAppBase:
     """RyuApp base class for FAUCET/Gauge."""
 
-    OFP_VERSIONS = valve_of.OFP_VERSIONS
-    _CONTEXTS = {
-        'dpset': dpset.DPSet,
-    }
     logname = ''
     exc_logname = ''
 
     def __init__(self, *args, **kwargs):
-        super(RyuAppBase, self).__init__(*args, **kwargs)
-        self.dpset = kwargs['dpset']
+        self.dpset = _DPSetAdapter()
         self._reg = kwargs.get('reg', None)
         self.config_file = self.get_setting('CONFIG', True)
         self.stat_reload = self.get_setting('CONFIG_STAT_RELOAD')
@@ -62,11 +55,11 @@ class RyuAppBase(app_manager.RyuApp):
             self.exc_logname, exc_logfile, logging.DEBUG, 1)
 
     @staticmethod
-    def _thread_jitter(period, jitter=2):
+    async def _thread_jitter(period, jitter=2):
         """Reschedule another thread with a random jitter."""
-        hub.sleep(period + random.randint(0, jitter))
+        await asyncio.sleep(period + random.randint(0, jitter))
 
-    def _thread_reschedule(self, ryu_event, period, jitter=2):
+    async def _thread_reschedule(self, ryu_event, period, jitter=2):
         """Trigger Ryu events periodically with a jitter.
 
         Args:
@@ -74,48 +67,44 @@ class RyuAppBase(app_manager.RyuApp):
             period (int): how often to trigger.
         """
         while True:
-            self.send_event(self.__class__.__name__, ryu_event)
-            self._thread_jitter(period, jitter)
+            ryu_event()
+            await self._thread_jitter(period, jitter)
 
     def get_setting(self, setting, path_eval=False):
         """Return config setting prefaced with logname."""
         return get_setting('_'.join((self.logname.upper(), setting)), path_eval)
 
-    def signal_handler(self, sigid, _):
+    def signal_handler(self, event):
         """Handle signals.
 
         Args:
             sigid (int): signal received.
         """
-        if sigid == signal.SIGINT:
-            self.close()
-            sys.exit(0)
-        if sigid == signal.SIGHUP:
-            self.send_event(self.__class__.__name__, EventReconfigure())
+        if event['signal'] == 'SIGHUP':
+            # Don't exit because of this signal.
+            event['exit'] = False
+            zof.post_event({'event': 'RECONFIGURE'})
 
     @staticmethod
     def _config_files_changed():
         """Return True if config files changed."""
         raise NotImplementedError # pragma: no cover
 
-    def _config_file_stat(self):
+    async def _config_file_stat(self):
         """Periodically stat config files for any changes."""
         while True:
             if self._config_files_changed():
                 if self.stat_reload:
-                    self.send_event(self.__class__.__name__, EventReconfigure())
-            self._thread_jitter(3)
+                    zof.post_event({'event': 'RECONFIGURE'})
+            await self._thread_jitter(3)
 
-    def start(self):
+    async def start(self, _event):
         """Start controller."""
-        super(RyuAppBase, self).start()
+
         if self.stat_reload:
             self.logger.info('will automatically reload new config on changes')
         self.reload_config(None)
-        self.threads.extend([
-            hub.spawn(thread) for thread in (self._config_file_stat,)])
-        signal.signal(signal.SIGHUP, self.signal_handler)
-        signal.signal(signal.SIGINT, self.signal_handler)
+        zof.ensure_future(self._config_file_stat())
 
     def reload_config(self, _ryu_event):
         """Handle reloading configuration."""
@@ -131,12 +120,8 @@ class RyuAppBase(app_manager.RyuApp):
             valve, ryu_dp, msg: Nones, or datapath object, Ryu datapath, and Ryu msg (if any).
         """
         datapath_obj = None
-        msg = None
-        if hasattr(ryu_event, 'msg'):
-            msg = ryu_event.msg
-            ryu_dp = msg.datapath
-        else:
-            ryu_dp = ryu_event.dp
+        msg = ryu_event.get('msg', ryu_event)
+        ryu_dp = ryu_event['datapath']
         dp_id = ryu_dp.id
         if dp_id in datapath_objs:
             datapath_obj = datapath_objs[dp_id]
@@ -153,19 +138,19 @@ class RyuAppBase(app_manager.RyuApp):
     def _datapath_disconnect(_ryu_event):
         raise NotImplementedError # pragma: no cover
 
-    @set_ev_cls(dpset.EventDP, dpset.DPSET_EV_DISPATCHER)
+    # zof decorator added in subclass.
     def connect_or_disconnect_handler(self, ryu_event):
         """Handle connection or disconnection of a datapath.
 
         Args:
             ryu_event (ryu.controller.dpset.EventDP): trigger.
         """
-        if ryu_event.enter:
+        if ryu_event['type'] == 'CHANNEL_UP':
             self._datapath_connect(ryu_event)
         else:
             self._datapath_disconnect(ryu_event)
 
-    @set_ev_cls(dpset.EventDPReconnected, dpset.DPSET_EV_DISPATCHER)
+    # Not used in zof.
     def reconnect_handler(self, ryu_event):
         """Handle reconnection of a datapath.
 

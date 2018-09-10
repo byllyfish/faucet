@@ -22,7 +22,7 @@ import random
 
 import ipaddress
 
-from ryu.lib.packet import arp, icmp, icmpv6, ipv4, ipv6
+from faucet.zof_constant import arp, inet, icmp, icmpv6, ipv4, ipv6
 
 from faucet import valve_of
 from faucet import valve_packet
@@ -754,7 +754,7 @@ class ValveIPv4RouteManager(ValveRouteManager):
         arp_pkt = pkt_meta.pkt.get_protocol(arp.arp)
         if arp_pkt is None:
             return ofmsgs
-        opcode = arp_pkt.opcode
+        opcode = arp_pkt.arp_op
         if opcode == arp.ARP_REQUEST:
             if pkt_meta.eth_dst in (valve_of.mac.BROADCAST_STR, pkt_meta.vlan.faucet_mac):
                 ofmsgs.extend(self._resolve_vip_response(pkt_meta, pkt_meta.l3_dst, now))
@@ -765,20 +765,20 @@ class ValveIPv4RouteManager(ValveRouteManager):
 
     def _control_plane_icmp_handler(self, pkt_meta, ipv4_pkt):
         ofmsgs = []
-        if ipv4_pkt.proto != valve_of.inet.IPPROTO_ICMP:
+        if ipv4_pkt.ip_proto != valve_of.inet.IPPROTO_ICMP:
             return ofmsgs
         if self._unicast_to_vip(pkt_meta):
             pkt_meta.reparse_all()
             icmp_pkt = pkt_meta.pkt.get_protocol(icmp.icmp)
             if icmp_pkt is None:
                 return ofmsgs
-            if icmp_pkt.type == icmp.ICMP_ECHO_REQUEST:
+            if icmp_pkt.icmpv4_type == icmp.ICMP_ECHO_REQUEST:
                 ofmsgs.append(
                     pkt_meta.vlan.pkt_out_port(
                         valve_packet.echo_reply, pkt_meta.port,
                         pkt_meta.vlan.faucet_mac, pkt_meta.eth_src,
                         pkt_meta.l3_dst, pkt_meta.l3_src,
-                        icmp_pkt.data))
+                        icmp_pkt.payload))
         return ofmsgs
 
     def control_plane_handler(self, now, pkt_meta):
@@ -889,13 +889,13 @@ class ValveIPv6RouteManager(ValveRouteManager):
 
     def _nd_solicit_handler(self, now, pkt_meta, _ipv6_pkt, icmpv6_pkt):
         ofmsgs = []
-        solicited_ip = ipaddress.ip_address(icmpv6_pkt.data.dst)
+        solicited_ip = ipaddress.ip_address(icmpv6_pkt.ipv6_nd_target)
         ofmsgs.extend(self._resolve_vip_response(pkt_meta, solicited_ip, now))
         return ofmsgs
 
     def _nd_advert_handler(self, now, pkt_meta, _ipv6_pkt, icmpv6_pkt):
         ofmsgs = []
-        target_ip = ipaddress.ip_address(icmpv6_pkt.data.dst)
+        target_ip = ipaddress.ip_address(icmpv6_pkt.ipv6_nd_target)
         ofmsgs.extend(self._gw_advert(pkt_meta, target_ip, now))
         return ofmsgs
 
@@ -923,20 +923,21 @@ class ValveIPv6RouteManager(ValveRouteManager):
                     valve_packet.icmpv6_echo_reply, pkt_meta.port,
                     pkt_meta.vlan.faucet_mac, pkt_meta.eth_src,
                     pkt_meta.l3_dst, pkt_meta.l3_src, ipv6_pkt.hop_limit,
-                    icmpv6_pkt.data.id, icmpv6_pkt.data.seq,
-                    icmpv6_pkt.data.data))
+                    icmpv6_pkt.payload))
         return ofmsgs
 
     _icmpv6_handlers = {
-        icmpv6.ND_NEIGHBOR_SOLICIT: (_nd_solicit_handler, icmpv6.nd_neighbor),
-        icmpv6.ND_NEIGHBOR_ADVERT: (_nd_advert_handler, icmpv6.nd_neighbor),
+        icmpv6.ND_NEIGHBOR_SOLICIT: (_nd_solicit_handler, 'ipv6_nd_target'),
+        icmpv6.ND_NEIGHBOR_ADVERT: (_nd_advert_handler, 'ipv6_nd_target'),
         icmpv6.ND_ROUTER_SOLICIT: (_router_solicit_handler, None),
-        icmpv6.ICMPV6_ECHO_REQUEST: (_echo_request_handler, icmpv6.echo),
+        icmpv6.ICMPV6_ECHO_REQUEST: (_echo_request_handler, 'payload'),
     }
 
     def _control_plane_icmpv6_handler(self, now, pkt_meta, ipv6_pkt):
         ofmsgs = []
         # Must be ICMPv6 and have no extended headers.
+        if 'nxt' not in ipv6_pkt:
+            return ofmsgs
         if ipv6_pkt.nxt != valve_of.inet.IPPROTO_ICMPV6:
             return ofmsgs
         if ipv6_pkt.ext_hdrs:
@@ -949,7 +950,7 @@ class ValveIPv6RouteManager(ValveRouteManager):
         icmpv6_pkt = pkt_meta.pkt.get_protocol(icmpv6.icmpv6)
         if icmpv6_pkt is None:
             return ofmsgs
-        icmpv6_type = icmpv6_pkt.type_
+        icmpv6_type = icmpv6_pkt.icmpv6_type
         if (ipv6_pkt.hop_limit != valve_packet.IPV6_MAX_HOP_LIM and
                 icmpv6_type != icmpv6.ICMPV6_ECHO_REQUEST):
             return ofmsgs
@@ -957,7 +958,7 @@ class ValveIPv6RouteManager(ValveRouteManager):
             icmpv6_type, (None, None))
         if handler is not None and (
                 payload_type is None or
-                isinstance(icmpv6_pkt.data, payload_type)):
+                payload_type in icmpv6_pkt):
             ofmsgs = handler(self, now, pkt_meta, ipv6_pkt, icmpv6_pkt)
         return ofmsgs
 

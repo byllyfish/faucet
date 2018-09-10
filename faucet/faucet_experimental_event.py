@@ -29,34 +29,9 @@
 
 import json
 import os
-import socket
+import queue
 import time
-from contextlib import contextmanager
-
-import eventlet
-eventlet.monkey_patch()
-
-from ryu.lib import hub # pylint: disable=wrong-import-position
-from ryu.lib.hub import StreamServer # pylint: disable=wrong-import-position
-
-
-class NonBlockLock:
-    """Non blocking lock that can be used as a context manager."""
-
-    def __init__(self):
-        self._lock = eventlet.semaphore.Semaphore()
-
-    @contextmanager
-    def acquire_nonblock(self):
-        """Attempt to acquire a lock."""
-        result = self._lock.acquire(blocking=False)
-        yield result
-        if result:
-            self.release()
-
-    def release(self):
-        """Release lock when done."""
-        self._lock.release()
+import asyncio
 
 
 class FaucetExperimentalEventNotifier:
@@ -68,35 +43,51 @@ class FaucetExperimentalEventNotifier:
         self.metrics = metrics
         self.event_id = 0
         self.thread = None
-        self.lock = NonBlockLock()
-        self.event_q = eventlet.queue.Queue(120)
+        self.event_q = queue.Queue(120)
+        self.server = None
 
-    def start(self):
+    async def start(self):
         """Start socket server."""
         if self.socket_path:
-            stream_server = StreamServer((self.socket_path, None), self._loop).serve_forever
-            self.thread = hub.spawn(stream_server)
-        return self.thread
+            self.server = await asyncio.start_unix_server(self._loop_entry, self.socket_path)
+            return self.server
 
-    def _loop(self, sock, _addr):
+        return None
+
+    async def _loop(self, sock):
         """Serve events."""
-        with self.lock.acquire_nonblock() as result:
-            if not result:
-                self.logger.info('multiple event clients not supported')
-            else:
-                self.logger.info('event client connected')
-                while True:
-                    event = self.event_q.get()
-                    event_bytes = bytes('\n'.join((json.dumps(event), '')).encode('UTF-8'))
-                    try:
-                        sock.sendall(event_bytes)
-                    except (socket.error, IOError) as err:
-                        self.logger.info('event client disconnected: %s', err)
-                        break
-        try:
+        while True:
+            while not self.event_q.empty():
+                event = self.event_q.get()
+                event_bytes = bytes('\n'.join((json.dumps(event), '')).encode('UTF-8'))
+                try:
+                    sock.write(event_bytes)
+                    await sock.drain()
+                except ConnectionError:
+                    return
+            await asyncio.sleep(0.1)
+
+    def stop(self):
+        """Stop socket server."""
+        if self.server:
+            self.server.close()
+        if self.thread:
+            self.thread.cancel()
+
+    async def _loop_entry(self, _reader, sock):
+        """Wrap _loop to track async thread."""
+        if self.thread:
+            self.logger.error('multiple event clients not supported')
             sock.close()
-        except (socket.error, IOError):
-            pass
+            return
+        self.thread = asyncio.Task.current_task()
+        self.logger.info('event client connected')
+        try:
+            return await self._loop(sock)
+        finally:
+            self.logger.info('event client disconnected')
+            sock.close()
+            self.thread = None
 
     def notify(self, dp_id, dp_name, event_dict):
         """Notify of an event."""
