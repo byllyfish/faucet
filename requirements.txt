@@ -1,13 +1,11 @@
-chewie==0.0.7
 datadiff
-eventlet==0.22.1 # pyup: ignore
 influxdb
-msgpack
-msgpack-python
+netaddr
 networkx
 pbr>=1.9
 prometheus_client
 pyyaml
-ryu==4.27
-beka==0.3.3
 pytricia
+-e git://github.com/byllyfish/beka@asyncio#egg=beka
+-e git://github.com/byllyfish/chewie@asyncio#egg=chewie
+-e git://github.com/byllyfish/zof@develop#egg=zof

@@ -524,7 +524,7 @@ class VLAN(Conf):
         if self.port_is_tagged(port):
             vid = self.vid
         pkt = packet_builder(vid, *args)
-        return valve_of.packetout(port.number, pkt.data)
+        return valve_of.packetout(port.number, pkt)
 
     def flood_pkt(self, packet_builder, *args):
         ofmsgs = []
@@ -534,7 +534,7 @@ class VLAN(Conf):
             if ports:
                 pkt = packet_builder(vid, *args)
                 flood_ofmsgs = [
-                    valve_of.packetout(port.number, pkt.data) for port in ports if port.running()]
+                    valve_of.packetout(port.number, pkt) for port in ports if port.running()]
                 ofmsgs.extend(flood_ofmsgs)
         return ofmsgs
 
