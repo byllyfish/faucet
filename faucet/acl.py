@@ -143,9 +143,9 @@ The output action contains a dictionary with the following elements:
     def build(self, meters, vid, port_num):
         """Check that ACL can be built from config."""
 
-        class NullRyuDatapath:
-            """Placeholder Ryu Datapath."""
-            ofproto = valve_of.ofp
+        #class NullRyuDatapath:
+        #    """Placeholder Ryu Datapath."""
+        #    ofproto = valve_of.ofp
 
         self.matches = {}
         self.set_fields = set()
@@ -162,27 +162,28 @@ The output action contains a dictionary with the following elements:
                 raise InvalidConfigError(err)
             test_config_condition(not ofmsgs, 'OF messages is empty')
             for ofmsg in ofmsgs:
-                ofmsg.datapath = NullRyuDatapath()
-                ofmsg.set_xid(0)
-                try:
-                    ofmsg.serialize()
-                except (KeyError, ValueError) as err:
-                    raise InvalidConfigError(err)
-                except Exception as err:
-                    print(ofmsg)
-                    raise err
+                #ofmsg.datapath = NullRyuDatapath()
+                #ofmsg.set_xid(0)
+                #try:
+                #    ofmsg.serialize()  # FIXME(bfish)
+                #except (KeyError, ValueError) as err:
+                #    raise InvalidConfigError(err)
+                #except Exception as err:
+                #    print(ofmsg)
+                #    raise err
                 if valve_of.is_flowmod(ofmsg):
                     apply_actions = []
-                    for inst in ofmsg.instructions:
+                    for inst in ofmsg['msg']['instructions']:
                         if valve_of.is_apply_actions(inst):
-                            apply_actions.extend(inst.actions)
+                            apply_actions.extend(inst['actions'])
                         elif valve_of.is_meter(inst):
                             self.meter = True
                     for action in apply_actions:
                         if valve_of.is_set_field(action):
-                            self.set_fields.add(action.key)
-                    for match, value in list(ofmsg.match.items()):
-                        has_mask = isinstance(value, (tuple, list))
+                            self.set_fields.add(action['field'].lower())
+                    for field in ofmsg['msg']['match']:
+                        has_mask = 'mask' in field
+                        match = field['field'].lower()
                         if has_mask or match not in self.matches:
                             self.matches[match] = has_mask
         return (self.matches, self.set_fields, self.meter)

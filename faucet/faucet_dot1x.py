@@ -17,11 +17,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import eventlet
-
-eventlet.monkey_patch()
-
-from ryu.lib import hub  # pylint: disable=wrong-import-position
 from chewie.chewie import Chewie  # pylint: disable=wrong-import-position
 
 from faucet import valve_of # pylint: disable=wrong-import-position
@@ -29,6 +24,8 @@ from faucet import valve_packet # pylint: disable=wrong-import-position
 
 
 EAPOL_DST = '01:80:c2:00:00:03'
+
+import zof
 
 
 def get_mac_str(valve_index, port_num):
@@ -61,7 +58,7 @@ class FaucetDot1x:
             dot1x_intf, self.logger,
             self.auth_handler, self.failure_handler, self.logoff_handler,
             radius_ip, radius_port, radius_secret, chewie_id)
-        hub.spawn(chewie.run)
+        zof.ensure_future(chewie.run())
         return chewie
 
     def get_valve_and_port(self, port_id):

@@ -95,16 +95,17 @@ class ValveTable: # pylint: disable=too-many-arguments,too-many-instance-attribu
     def _verify_flowmod(self, flowmod):
         if valve_of.is_flowdel(flowmod):
             return
-        if flowmod.priority == 0:
-            assert not flowmod.match.items(), (
+        if flowmod['msg']['priority'] == 0:
+            assert not flowmod['msg']['match'], (
                 'default flow cannot have matches')
         elif self.match_types:
-            match_fields = list(flowmod.match.items())
-            for match_type, match_field in match_fields:
+            match_fields = flowmod['msg']['match']
+            for field in match_fields:
+                match_type = field['field'].lower()
                 assert match_type in self.match_types, (
                     '%s match in table %s' % (match_type, self.name))
                 config_mask = self.match_types[match_type]
-                flow_mask = isinstance(match_field, tuple)
+                flow_mask = 'mask' in field
                 assert config_mask or (not config_mask and not flow_mask), (
                     '%s configured mask %s but flow mask %s in table %s (%s)' % (
                         match_type, config_mask, flow_mask, self.name, flowmod))
