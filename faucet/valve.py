@@ -563,7 +563,7 @@ class Valve:
         for port in list(self.dp.lacp_active_ports):
             if port.running():
                 pkt = self._lacp_pkt(port.dyn_last_lacp_pkt, port)
-                ofmsgs.append(valve_of.packetout(port.number, pkt.data))
+                ofmsgs.append(valve_of.packetout(port.number, pkt))
 
         ports = self.dp.lldp_beacon_send_ports(now)
         ofmsgs.extend([self._send_lldp_beacon_on_port(port, now) for port in ports])
@@ -816,7 +816,7 @@ class Valve:
                 ofmsgs.extend(self.lacp_down(port, cold_start=cold_start))
                 if port.lacp_active:
                     pkt = self._lacp_pkt(port.dyn_last_lacp_pkt, port)
-                    ofmsgs.append(valve_of.packetout(port.number, pkt.data))
+                    ofmsgs.append(valve_of.packetout(port.number, pkt))
 
             if port.override_output_port:
                 ofmsgs.append(eth_src_table.flowmod(

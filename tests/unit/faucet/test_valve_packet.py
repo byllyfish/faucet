@@ -35,6 +35,7 @@ class ValvePacketTestCase(unittest.TestCase):
             actor_system='00:00:00:00:00:02',
             actor_key=4,
             actor_port=5,
+            actor_state_synchronization=1,
             partner_system='00:00:00:00:00:03',
             partner_key=6,
             partner_port=7,
