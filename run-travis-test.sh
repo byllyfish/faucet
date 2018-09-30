@@ -3,14 +3,14 @@
 
 echo TRAVIS_COMMIT_RANGE: $TRAVIS_COMMIT_RANGE
 echo TRAVIS_COMMIT: $TRAVIS_COMMIT
-FILES_CHANGED=`git diff --name-only $TRAVIS_COMMIT_RANGE`
-PY_FILES_CHANGED=`git diff --name-only $TRAVIS_COMMIT_RANGE|grep -E ".py$"`
-
-if [[ "$FILES_CHANGED" != "" ]] ; then
-  echo files changed: $FILES_CHANGED
-else
-  echo no files changed.
+FILES_CHANGED=$(git diff --name-only $TRAVIS_COMMIT_RANGE)
+if [ "$?" -ne 0 ] ; then
+  FILES_CHANGED=""
 fi
+PY_FILES_CHANGED=$(echo "$FILES_CHANGED" | grep -E '.py$')
+
+echo "Files Changed:  $FILES_CHANGED"
+echo "Python Changed: $PY_FILES_CHANGED"
 
 if [ "${MATRIX_SHARD}" == "sanity" ] ; then
   FAUCET_TESTS="-u FaucetSanityTest"
@@ -42,7 +42,7 @@ if [[ "$PY3V" != "Python 3.6"* ]] ; then
   exit 0
 fi
 
-if [[ "$PY_FILES_CHANGED" == "" ]] ; then
+if [[ -z "$PY_FILES_CHANGED" && -n "$FILES_CHANGED" ]] ; then
   echo no python source changed, not running docker tests.
   exit 0
 fi
