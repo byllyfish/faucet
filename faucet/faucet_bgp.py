@@ -18,12 +18,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import asyncio
 import ipaddress
-
-import eventlet
-eventlet.monkey_patch()
-
-from ryu.lib import hub # pylint: disable=wrong-import-position
 
 from beka.beka import Beka # pylint: disable=wrong-import-position
 
@@ -173,7 +169,7 @@ class FaucetBgp:
                 connect_mode=vlan.bgp_connect_mode,
                 peer_ip=str(bgp_neighbor_address),
                 peer_as=vlan.bgp_neighbor_as)
-        hub.spawn(beka.run)
+        asyncio.ensure_future(beka.run())
         return beka
 
     def shutdown_bgp_speakers(self):

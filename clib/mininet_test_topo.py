@@ -18,6 +18,7 @@ from mininet.node import OVSSwitch
 from clib import mininet_test_util
 
 import netifaces
+import psutil
 
 class FaucetHost(CPULimitedHost):
     """Base Mininet Host class, for Mininet-based tests."""
@@ -384,8 +385,9 @@ socket_timeout=15
         for ipv in (4, 6):
             listening_out = self.cmd(
                 mininet_test_util.tcp_listening_cmd(port, ipv=ipv, state=state)).split()
+            rpid = self.ryu_pid()
             for pid in listening_out:
-                if int(pid) == self.ryu_pid():
+                if int(pid) == rpid or psutil.Process(int(pid)).ppid() == rpid:
                     return True
         return False
 

@@ -13,6 +13,9 @@ dir=`dirname $0`
 # Clean up
 rm -r "$FROOT/docs"
 
+# Install oftr package.
+$dir/install-oftr.sh
+
 $APK add -U git yaml-dev $BUILDDEPS && \
   $dir/retrycmd.sh "$PIP3 pip" && \
   $dir/retrycmd.sh "$PIP3 $TESTDEPS" && \
