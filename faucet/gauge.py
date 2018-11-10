@@ -30,9 +30,7 @@ from faucet.valve_ryuapp import RyuAppBase
 from faucet.valve_util import dpid_log, kill_on_exception
 from faucet.watcher import watcher_factory
 
-APP = zof.Application('gauge')
 
-@APP.bind()
 class Gauge(RyuAppBase):
     """Ryu app for polling Faucet controlled datapaths for stats/state.
 
@@ -45,20 +43,20 @@ class Gauge(RyuAppBase):
     exc_logname = logname + '.exception'
     prom_client = None
 
-    def __init__(self, *args, **kwargs):
-        super(Gauge, self).__init__(*args, **kwargs)
+    def __init__(self):
+        super().__init__()
         self.watchers = {}
         self.config_watcher = ConfigWatcher()
         self.prom_client = GaugePrometheusClient(reg=self._reg)
 
-    def _get_watchers(self, ryu_event):
+    def _get_watchers(self, dp, ryu_event):
         """Get Watchers instances to response to an event.
 
         Args:
             ryu_event (ryu.controller.event.EventReplyBase): DP event.
         Returns:
         """
-        return self._get_datapath_obj(self.watchers, ryu_event)
+        return self._get_datapath_obj(self.watchers, dp, ryu_event)
 
     @kill_on_exception(exc_logname)
     def _load_config(self):
@@ -86,7 +84,7 @@ class Gauge(RyuAppBase):
 
         timestamp = time.time()
         for watcher_dpid, watchers in new_watchers.items():
-            ryu_dp = self.dpset.get(watcher_dpid)
+            ryu_dp = zof.find_datapath(watcher_dpid)
             if ryu_dp:
                 self._start_watchers(ryu_dp, watchers, timestamp)
 
@@ -95,9 +93,9 @@ class Gauge(RyuAppBase):
         self.logger.info('config complete')
 
     @kill_on_exception(exc_logname)
-    def _update_watcher(self, name, ryu_event):
+    def _update_watcher(self, name, dp, ryu_event):
         """Call watcher with event data."""
-        watchers, ryu_dp, msg = self._get_watchers(ryu_event)
+        watchers, ryu_dp, msg = self._get_watchers(dp, ryu_event)
         if watchers is None:
             return
         if name in watchers:
@@ -107,10 +105,9 @@ class Gauge(RyuAppBase):
     def _config_files_changed(self):
         return self.config_watcher.files_changed()
 
-    @APP.event('RECONFIGURE')
-    def reload_config(self, ryu_event):
+    def on_reload_config(self, dp, ryu_event):
         """Handle request for Gauge config reload."""
-        super(Gauge, self).reload_config(ryu_event)
+        super().on_reload_config(dp, ryu_event)
         self._load_config()
 
     def _start_watchers(self, ryu_dp, watchers, timestamp):
@@ -122,28 +119,28 @@ class Gauge(RyuAppBase):
                 if isinstance(watcher, GaugePortStatePoller):
                     for port in ryu_dp.ports.values():
                         msg = {
-                            'port_no': port.port_no,
+                            'port_no': port['port_no'],
                             'reason': 'ADD',
-                            'state': port.state, 
-                            'curr_speed': port.curr_speed, 
-                            'max_speed': port.max_speed
+                            'state': port['state'], 
+                            'curr_speed': port['curr_speed'], 
+                            'max_speed': port['max_speed']
                         }
                         watcher.update(timestamp, ryu_dp.id, msg)
                 watcher.start(ryu_dp, is_active)
 
     @kill_on_exception(exc_logname)
-    def _datapath_connect(self, ryu_event):
+    def on_channel_up(self, dp, ryu_event):
         """Handle DP up.
 
         Args:
             ryu_event (ryu.controller.event.EventReplyBase): DP event.
         """
-        watchers, ryu_dp, _ = self._get_watchers(ryu_event)
+        watchers, ryu_dp, _ = self._get_watchers(dp, ryu_event)
         if watchers is None:
             return
         self.logger.info('%s up', dpid_log(ryu_dp.id))
-        ryu_dp.send_msg(valve_of.faucet_config(datapath=ryu_dp))
-        ryu_dp.send_msg(valve_of.faucet_async(datapath=ryu_dp, packet_in=False))
+        ryu_dp.send(valve_of.faucet_config(datapath=ryu_dp))
+        ryu_dp.send(valve_of.faucet_async(datapath=ryu_dp, packet_in=False))
         self._start_watchers(ryu_dp, watchers, time.time())
 
     def _stop_watchers(self, watchers):
@@ -155,13 +152,13 @@ class Gauge(RyuAppBase):
                     watcher.stop()
 
     @kill_on_exception(exc_logname)
-    def _datapath_disconnect(self, ryu_event):
+    def on_channel_down(self, dp, ryu_event):
         """Handle DP down.
 
         Args:
            ryu_event (ryu.controller.event.EventReplyBase): DP event.
         """
-        watchers, ryu_dp, _ = self._get_watchers(ryu_event)
+        watchers, ryu_dp, _ = self._get_watchers(dp, ryu_event)
         if watchers is None:
             return
         self.logger.info('%s down', dpid_log(ryu_dp.id))
@@ -173,20 +170,15 @@ class Gauge(RyuAppBase):
         'FLOW_DESC_REPLY': 'flow_table',
     }
 
-    @APP.message('PORT_STATUS')
-    @APP.message('PORT_STATS_REPLY')
-    @APP.message('FLOW_DESC_REPLY')
     @kill_on_exception(exc_logname)
-    def update_watcher_handler(self, ryu_event):
+    def update_watcher_handler(self, dp, ryu_event):
         """Handle port status change event.
 
         Args:
            ryu_event (ryu.controller.event.EventReplyBase): port status change event.
         """
-        self._update_watcher(self._WATCHER_HANDLERS[ryu_event['type']], ryu_event)
+        self._update_watcher(self._WATCHER_HANDLERS[ryu_event['type']], dp, ryu_event)
 
-    # Add zof handlers for base class.
-    APP.event('START')(RyuAppBase.start)
-    APP.message('CHANNEL_UP')(RyuAppBase.connect_or_disconnect_handler)
-    APP.message('CHANNEL_DOWN')(RyuAppBase.connect_or_disconnect_handler)
-    APP.event('SIGNAL')(RyuAppBase.signal_handler)
+    on_port_status = update_watcher_handler
+    on_port_stats_reply = update_watcher_handler
+    on_flow_desc_reply = update_watcher_handler

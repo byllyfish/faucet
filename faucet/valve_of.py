@@ -20,8 +20,8 @@
 import ipaddress
 import random
 
-from zof.pktview import pktview_to_list, pktview_from_ofctl, PktView
-from zof.ofctl import MATCH_FIELDS
+import zof
+from zof.extra.ofctl import MATCH_FIELDS, convert_from_ofctl
 
 from faucet.conf import test_config_condition, InvalidConfigError
 from faucet.zof_constant import ofp, ether, mac, inet
@@ -374,7 +374,6 @@ def packetouts(port_nums, data):
             'buffer_id': 'NO_BUFFER',
             'in_port': 'CONTROLLER',
             'actions': [output_port(port_num) for port_num in port_nums],
-            'data': b'',
             'pkt': data
         }
     }
@@ -413,12 +412,12 @@ def match(match_fields):
     Returns:
         ryu.ofproto.ofproto_v1_3_parser.OFPMatch: matches.
     """
-    return pktview_to_list(match_fields)
+    return zof.Match(match_fields).to_list()
 
 
 def match_from_dict(match_dict):
     try:
-        return pktview_to_list(pktview_from_ofctl(match_dict, validate=True))
+        return match(convert_from_ofctl(match_dict, validate=True))
     except ValueError as ex:
         raise InvalidConfigError(str(ex))
 
@@ -803,7 +802,7 @@ def _hash_wrap(value):
 
     Value is independent of iteration order for dicts, lists or tuples.
     """
-    if isinstance(value, (dict, PktView)):
+    if isinstance(value, dict):
         return sum(hash(k) * 11 + _hash_wrap(v) * 7 for k, v in list(value.items()))
     if isinstance(value, (list, tuple)):
         return sum(_hash_wrap(v) * 7 for v in value)

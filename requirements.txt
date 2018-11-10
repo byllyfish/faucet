@@ -8,4 +8,4 @@ pyyaml
 pytricia
 -e git://github.com/byllyfish/beka@asyncio#egg=beka
 -e git://github.com/byllyfish/chewie@asyncio#egg=chewie
--e git://github.com/byllyfish/zof@develop#egg=zof
+-e git://github.com/byllyfish/zof@zoflite#egg=zof

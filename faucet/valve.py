@@ -1530,7 +1530,7 @@ class Valve:
             flow_msgs (list): OpenFlow messages to send.
         """
         for flow_msg in self.prepare_send_flows(flow_msgs):
-            ryu_dp.send_msg(flow_msg)
+            ryu_dp.send(flow_msg)
 
     def flow_timeout(self, now, table_id, match):
         """Call flow timeout message handler:

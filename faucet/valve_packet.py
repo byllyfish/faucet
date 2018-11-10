@@ -22,7 +22,7 @@ import struct
 from netaddr import EUI
 from collections import namedtuple
 
-from zof.pktview import make_pktview
+import zof
 
 from faucet import valve_util
 from faucet.zof_constant import ether, mac, arp, inet, icmp, icmpv6, ofp, slow, bpdu, ipv4, ipv6, lldp
@@ -111,7 +111,7 @@ LLDPPortID = namedtuple('LLDPPortID', 'port_id')
 LLDPOrgSpecific = namedtuple('LLDPOrgSpecific', 'oui subtype info')
 
 def _convert_lldp_port_id(pkt):
-    tlv = pkt('x_lldp_port_id')
+    tlv = pkt.get('x_lldp_port_id')
     if not tlv:
         return
     if tlv.startswith('ifname '):
@@ -122,7 +122,7 @@ def _convert_lldp_port_id(pkt):
         pkt['x_lldp_port_id'] = LLDPPortID(port_id)
 
 def _convert_lldp_org_specific(pkt):
-    tlvs = pkt('x_lldp_org_specific')
+    tlvs = pkt.get('x_lldp_org_specific')
     if not tlvs:
         return
     if not isinstance(tlvs, list):
@@ -195,7 +195,7 @@ def build_pkt_header(vid, eth_src, eth_dst, dl_type):
     Returns:
         ryu.lib.packet.ethernet: Ethernet packet with header.
     """
-    pkt_header = make_pktview(eth_dst=eth_dst, eth_src=eth_src, eth_type=dl_type)
+    pkt_header = zof.Packet(eth_dst=eth_dst, eth_src=eth_src, eth_type=dl_type)
     if vid is not None:
         pkt_header.vlan_vid = vid | ofp.OFPVID_PRESENT
     return pkt_header
@@ -257,7 +257,7 @@ def faucet_lldp_stack_state_tlvs(dp, port):
 
 def tlvs_by_type(lldp_pkt, tlv_type):
     """Return list of TLVs with matching type."""
-    tlvs = lldp_pkt(tlv_type)
+    tlvs = lldp_pkt.get(tlv_type)
     if not tlvs:
         return []
     if not isinstance(tlvs, list):
@@ -755,13 +755,13 @@ class PacketMeta:
         if self.eth_type in self.ETH_TYPES_PARSERS:
             self.l3_pkt = self.pkt.get_protocol(self.ETH_TYPES_PARSERS[self.eth_type])
             if self.l3_pkt:
-                if hasattr(self.l3_pkt, 'arp_spa'):
+                if 'arp_spa' in self.l3_pkt:
                     self.l3_src = self.l3_pkt.arp_spa
                     self.l3_dst = self.l3_pkt.arp_tpa
-                elif hasattr(self.l3_pkt, 'ipv4_src'):
+                elif 'ipv4_src' in self.l3_pkt:
                     self.l3_src = self.l3_pkt.ipv4_src
                     self.l3_dst = self.l3_pkt.ipv4_dst
-                elif hasattr(self.l3_pkt, 'ipv6_src'):
+                elif 'ipv6_src' in self.l3_pkt:
                     self.l3_src = self.l3_pkt.ipv6_src
                     self.l3_dst = self.l3_pkt.ipv6_dst
                 self.l3_src = ipaddress.ip_address(self.l3_src)

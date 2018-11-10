@@ -21,18 +21,12 @@
 import asyncio
 import logging
 import random
+import signal
 
 import zof
 
 from faucet import valve_of
 from faucet.valve_util import dpid_log, get_logger, get_setting
-
-
-class _DPSetAdapter:
-    """Adapt find_datapath to Ryu-like API."""
-    @staticmethod
-    def get(dp_id):
-        return zof.find_datapath(datapath_id=dp_id)
 
 
 class RyuAppBase:
@@ -41,9 +35,8 @@ class RyuAppBase:
     logname = ''
     exc_logname = ''
 
-    def __init__(self, *args, **kwargs):
-        self.dpset = _DPSetAdapter()
-        self._reg = kwargs.get('reg', None)
+    def __init__(self):
+        self._reg = None
         self.config_file = self.get_setting('CONFIG', True)
         self.stat_reload = self.get_setting('CONFIG_STAT_RELOAD')
         loglevel = self.get_setting('LOG_LEVEL')
@@ -74,16 +67,13 @@ class RyuAppBase:
         """Return config setting prefaced with logname."""
         return get_setting('_'.join((self.logname.upper(), setting)), path_eval)
 
-    def signal_handler(self, event):
+    def handle_sighup(self):
         """Handle signals.
 
         Args:
             sigid (int): signal received.
         """
-        if event['signal'] == 'SIGHUP':
-            # Don't exit because of this signal.
-            event['exit'] = False
-            zof.post_event({'event': 'RECONFIGURE'})
+        zof.post_event({'type': 'RELOAD_CONFIG'})
 
     @staticmethod
     def _config_files_changed():
@@ -95,22 +85,26 @@ class RyuAppBase:
         while True:
             if self._config_files_changed():
                 if self.stat_reload:
-                    zof.post_event({'event': 'RECONFIGURE'})
+                    self.handle_sighup()
             await self._thread_jitter(3)
 
-    async def start(self, _event):
+    async def on_start(self):
         """Start controller."""
 
         if self.stat_reload:
             self.logger.info('will automatically reload new config on changes')
-        self.reload_config(None)
-        zof.ensure_future(self._config_file_stat())
+        self.on_reload_config(None, None)
+        zof.create_task(self._config_file_stat())
+        asyncio.get_event_loop().add_signal_handler(signal.SIGHUP, self.handle_sighup)
 
-    def reload_config(self, _ryu_event):
+    def on_stop(self):
+        asyncio.get_event_loop().remove_signal_handler(signal.SIGHUP)
+
+    def on_reload_config(self, _dp, _event):
         """Handle reloading configuration."""
         self.logger.info('Reloading configuration')
 
-    def _get_datapath_obj(self, datapath_objs, ryu_event):
+    def _get_datapath_obj(self, datapath_objs, ryu_dp, ryu_event):
         """Get datapath object to response to an event.
 
         Args:
@@ -121,40 +115,16 @@ class RyuAppBase:
         """
         datapath_obj = None
         msg = ryu_event.get('msg', ryu_event)
-        ryu_dp = ryu_event['datapath']
         dp_id = ryu_dp.id
         if dp_id in datapath_objs:
             datapath_obj = datapath_objs[dp_id]
         else:
-            ryu_dp.close()
+            ryu_dp.close(force=True)
             self.logger.error('%s: unknown datapath %s', str(ryu_event), dpid_log(dp_id))
         return (datapath_obj, ryu_dp, msg)
 
-    @staticmethod
-    def _datapath_connect(_ryu_event):
+    def on_channel_up(self, dp, event):
         raise NotImplementedError # pragma: no cover
 
-    @staticmethod
-    def _datapath_disconnect(_ryu_event):
+    def on_channel_down(self, dp, event):
         raise NotImplementedError # pragma: no cover
-
-    # zof decorator added in subclass.
-    def connect_or_disconnect_handler(self, ryu_event):
-        """Handle connection or disconnection of a datapath.
-
-        Args:
-            ryu_event (ryu.controller.dpset.EventDP): trigger.
-        """
-        if ryu_event['type'] == 'CHANNEL_UP':
-            self._datapath_connect(ryu_event)
-        else:
-            self._datapath_disconnect(ryu_event)
-
-    # Not used in zof.
-    def reconnect_handler(self, ryu_event):
-        """Handle reconnection of a datapath.
-
-        Args:
-            ryu_event (ryu.controller.dpset.EventDPReconnected): trigger.
-        """
-        self._datapath_connect(ryu_event)

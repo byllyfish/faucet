@@ -36,9 +36,6 @@ from faucet import faucet_metrics
 from faucet import valve_of
 
 
-APP = zof.Application('faucet')
-
-@APP.bind()
 class Faucet(RyuAppBase):
     """A RyuApp that implements an L2/L3 learning VLAN switch.
 
@@ -52,8 +49,8 @@ class Faucet(RyuAppBase):
     notifier = None
     valves_manager = None
 
-    def __init__(self, *args, **kwargs):
-        super(Faucet, self).__init__(*args, **kwargs)
+    def __init__(self):
+        super().__init__()
         self.api = faucet_experimental_api.FaucetExperimentalAPI()
         self.metrics = faucet_metrics.FaucetMetrics(reg=self._reg)
         self.bgp = faucet_bgp.FaucetBgp(
@@ -66,10 +63,9 @@ class Faucet(RyuAppBase):
             self.logname, self.logger, self.metrics, self.notifier, self.bgp,
             self.dot1x, self._send_flow_msgs)
 
-    @APP.event('START')
     @kill_on_exception(exc_logname)
-    async def start(self, _event):
-        await super().start(_event)
+    async def on_start(self):
+        await super().on_start()
 
         # Start Prometheus
         prom_port = int(self.get_setting('PROMETHEUS_PORT'))
@@ -91,30 +87,29 @@ class Faucet(RyuAppBase):
                 func = partial(self._valve_flow_services, service)
             else:
                 func = partial(service, None)
-            zof.ensure_future(self._thread_reschedule(func, period))
+            zof.create_task(self._thread_reschedule(func, period))
 
         # Register to API
         self.api._register(self)
-        zof.post_event({'event': 'FAUCET_API_READY', 'faucet_api': self.api})
+        zof.post_event({'type': 'FAUCET_API_READY', 'faucet_api': self.api})
 
-    @APP.event('STOP')
     @kill_on_exception(exc_logname)
-    def stop(self, _):
+    def on_stop(self):
         """Called when app stops."""
+        super().on_stop()
         self.notifier.stop()
 
     def _delete_deconfigured_dp(self, deleted_dpid):
         self.logger.info(
             'Deleting de-configured %s', dpid_log(deleted_dpid))
-        ryu_dp = self.dpset.get(deleted_dpid)
+        ryu_dp = zof.find_datapath(deleted_dpid)
         if ryu_dp is not None:
             ryu_dp.close()
 
-    @APP.event('RECONFIGURE')
     @kill_on_exception(exc_logname)
-    def reload_config(self, ryu_event):
+    def on_reload_config(self, dp, event):
         """Handle a request to reload configuration."""
-        super(Faucet, self).reload_config(ryu_event)
+        super().on_reload_config(dp, event)
         self.valves_manager.request_reload_configs(
             time.time(), self.config_file, delete_dp=self._delete_deconfigured_dp)
 
@@ -128,13 +123,13 @@ class Faucet(RyuAppBase):
             ryu_dp: Override datapath from DPSet.
         """
         if ryu_dp is None:
-            ryu_dp = self.dpset.get(valve.dp.dp_id)
+            ryu_dp = zof.find_datapath(valve.dp.dp_id)
         if not ryu_dp:
             valve.logger.error('send_flow_msgs: DP not up')
             return
         valve.send_flows(ryu_dp, flow_msgs)
 
-    def _get_valve(self, ryu_event, require_running=False):
+    def _get_valve(self, ryu_dp, ryu_event, require_running=False):
         """Get Valve instance to response to an event.
 
         Args:
@@ -144,7 +139,7 @@ class Faucet(RyuAppBase):
             valve, ryu_dp, msg: tuple of Nones, or datapath object, Ryu datapath, and msg (if any)
         """
         valve, ryu_dp, msg = self._get_datapath_obj(
-            self.valves_manager.valves, ryu_event)
+            self.valves_manager.valves, ryu_dp, ryu_event)
         if valve:
             if msg:
                 valve.ofchannel_log([msg])
@@ -175,130 +170,105 @@ class Faucet(RyuAppBase):
             return self.valves_manager.valves[dp_id].dp.get_tables()
         return {}
 
-    @APP.message('PACKET_IN')
     @kill_on_exception(exc_logname)
-    def packet_in_handler(self, ryu_event):
+    def on_packet_in(self, dp, ryu_event):
         """Handle a packet in event from the dataplane.
 
         Args:
             ryu_event (ryu.controller.event.EventReplyBase): packet in message.
         """
-        valve, _, msg = self._get_valve(ryu_event, require_running=True)
+        valve, _, msg = self._get_valve(dp, ryu_event, require_running=True)
         if valve is None:
             return
         timestamp = float(ryu_event['time'])
         self.valves_manager.valve_packet_in(timestamp, valve, msg)
 
-    @APP.message('ERROR')
     @kill_on_exception(exc_logname)
-    def error_handler(self, ryu_event):
+    def on_error(self, dp, ryu_event):
         """Handle an OFPError from a datapath.
 
         Args:
             ryu_event (ryu.controller.ofp_event.EventOFPErrorMsg): trigger
         """
-        valve, _, msg = self._get_valve(ryu_event)
+        valve, _, msg = self._get_valve(dp, ryu_event)
         if valve is None:
             return
         valve.oferror(ryu_event)
 
-    # UNUSED IN ZOF
     @kill_on_exception(exc_logname)
-    def features_handler(self, ryu_event):
-        """Handle receiving a switch features message from a datapath.
-
-        Args:
-            ryu_event (ryu.controller.ofp_event.EventOFPStateChange): trigger.
-        """
-        valve, ryu_dp, msg = self._get_valve(ryu_event)
-        if valve is None:
-            return
-        self._send_flow_msgs(valve, valve.switch_features(msg), ryu_dp=ryu_dp)
-
-    @kill_on_exception(exc_logname)
-    def _datapath_connect(self, ryu_event):
+    def on_channel_up(self, dp, ryu_event):
         """Handle any/all re/connection of a datapath.
 
         Args:
             ryu_event (ryu.controller.ofp_event.Event)
         """
         now = time.time()
-        valve, ryu_dp, _ = self._get_valve(ryu_event)
+        valve, ryu_dp, msg = self._get_valve(dp, ryu_event)
         if valve is None:
             return
-        # Obtain FEATURES_REPLY from zof.Datapath object.
-        flowmods = valve.switch_features(ryu_dp.features)
+        flowmods = valve.switch_features(msg['features'])
         self._send_flow_msgs(valve, flowmods)
         # Handle remaining "connect" messages.
         discovered_up_ports = [
-            port.port_no for port in list(ryu_dp.ports.values())
-            if (valve_of.port_status_from_state(port.state) and
-                not valve_of.ignore_port(port.port_no))]
+            port['port_no'] for port in msg['features']['ports']
+            if (valve_of.port_status_from_state(port['state']) and
+                not valve_of.ignore_port(port['port_no']))]
         self._send_flow_msgs(valve, valve.datapath_connect(now, discovered_up_ports))
 
     @kill_on_exception(exc_logname)
-    def _datapath_disconnect(self, ryu_event):
+    def on_channel_down(self, dp, ryu_event):
         """Handle any/all disconnection of a datapath.
 
         Args:
             ryu_event (ryu.controller.ofp_event.Event)
         """
-        valve, _, _ = self._get_valve(ryu_event)
+        valve, _, _ = self._get_valve(dp, ryu_event)
         if valve is None:
             return
         valve.datapath_disconnect()
 
-    @APP.message('DESC_REPLY')
     @kill_on_exception(exc_logname)
-    def desc_stats_reply_handler(self, ryu_event):
+    def on_desc_reply(self, dp, ryu_event):
         """Handle OFPDescStatsReply from datapath.
 
         Args:
             ryu_event (ryu.controller.ofp_event.EventOFPDescStatsReply): trigger.
         """
-        valve, _, msg = self._get_valve(ryu_event)
+        valve, _, msg = self._get_valve(dp, ryu_event)
         if valve is None:
             return
         valve.ofdescstats_handler(msg)
 
-    @APP.message('PORT_STATUS')
     @kill_on_exception(exc_logname)
-    def port_status_handler(self, ryu_event):
+    def on_port_status(self, dp, ryu_event):
         """Handle a port status change event.
 
         Args:
             ryu_event (ryu.controller.ofp_event.EventOFPPortStatus): trigger.
         """
-        valve, _, msg = self._get_valve(ryu_event, require_running=True)
+        valve, _, msg = self._get_valve(dp, ryu_event, require_running=True)
         if valve is None:
             return
         self._send_flow_msgs(valve, valve.port_status_handler(
             msg['port_no'], msg['reason'], msg['state']))
 
-    @APP.message('FLOW_REMOVED')
     @kill_on_exception(exc_logname)
-    def flowremoved_handler(self, ryu_event):
+    def on_flow_removed(self, dp, ryu_event):
         """Handle a flow removed event.
 
         Args:
             ryu_event (ryu.controller.ofp_event.EventOFPFlowRemoved): trigger.
         """
-        valve, ryu_dp, msg = self._get_valve(ryu_event, require_running=True)
+        valve, ryu_dp, msg = self._get_valve(dp, ryu_event, require_running=True)
         if valve is None:
             return
         if msg['reason'] == valve_of.ofp.OFPRR_IDLE_TIMEOUT:
             self._send_flow_msgs(valve, valve.flow_timeout(time.time(), msg['table_id'], msg['match']))
 
-    @APP.message('CHANNEL_ALERT')
-    @kill_on_exception(exc_logname)
-    def channel_alert(self, event):
-        """Handle a channel alert event."""
-        message = event['msg']['message']
-        if message.startswith('YAML:'):
-            # There was a problem with something we sent.
-            raise RuntimeError('CHANNEL_ALERT: %s' % message)
-
-    # Attach zof handlers to base class methods.
-    APP.message('CHANNEL_UP')(RyuAppBase.connect_or_disconnect_handler)
-    APP.message('CHANNEL_DOWN')(RyuAppBase.connect_or_disconnect_handler)
-    APP.event('SIGNAL')(RyuAppBase.signal_handler)
+    #@kill_on_exception(exc_logname)
+    #def on_channel_alert(self, _dp, event):
+    #    """Handle a channel alert event."""
+    #    message = event['msg']['message']
+    #    if message.startswith('YAML:'):
+    #        # There was a problem with something we sent.
+    #        raise RuntimeError('CHANNEL_ALERT: %s' % message)

@@ -17,6 +17,7 @@ def load_tables(dp, valve_cl): # pylint: disable=invalid-name
             'write_actions': [],
             'write_set_field': [],
             'apply_set_field': [],
+            'match': [],
             'wildcards': [],
             'next_tables': [],
         }

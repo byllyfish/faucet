@@ -20,8 +20,6 @@ import logging
 import random
 import asyncio
 
-import zof
-
 from faucet.valve_of import devid_present
 
 
@@ -141,7 +139,7 @@ class GaugeThreadPoller(GaugePoller):
         self.stop()
         self._running = True
         if active:
-            self.thread = zof.ensure_future(self())
+            self.thread = ryudp.create_task(self())
 
     def stop(self):
         super(GaugeThreadPoller, self).stop()
@@ -184,7 +182,7 @@ class GaugePortStatsPoller(GaugeThreadPoller):
     def send_req(self):
         if self.ryudp:
             req = {'type': 'PORT_STATS_REQUEST', 'msg':{'port_no': 'ANY'}}
-            self.ryudp.send_msg(req)
+            self.ryudp.send(req)
 
     def no_response(self):
         self.logger.info('port stats request timed out')
@@ -207,7 +205,7 @@ class GaugeFlowTablePoller(GaugeThreadPoller):
                 'cookie': 0,
                 'cookie_mask': 0,
                 'match': []}}
-            self.ryudp.send_msg(req)
+            self.ryudp.send(req)
 
     def no_response(self):
         self.logger.info('flow dump request timed out')

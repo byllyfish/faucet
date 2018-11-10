@@ -85,8 +85,9 @@ class PromClient: # pylint: disable=too-few-public-methods
                 self.thread.daemon = True
                 self.thread.start()
             else:
-                from zof.http import HttpServer
-                web = HttpServer()
+                from zof.extra.http import HttpServer
+                endpoint = (prom_addr, int(prom_port))
+                web = HttpServer(endpoint)
                 
                 @web.get('/?{name[]}')
                 @web.get('/metrics?{name[]}')
@@ -97,6 +98,5 @@ class PromClient: # pylint: disable=too-few-public-methods
                         reg = reg.restricted_registry(name)
                     return generate_latest(reg)
 
-                endpoint = '[%s]:%d' % (prom_addr, int(prom_port))
-                zof.ensure_future(web.serve_forever(endpoint))
+                zof.create_task(web.serve_forever())
                 self.server = web
