@@ -25,6 +25,9 @@ if [[ "$TRAVIS_COMMIT_RANGE" != "" ]] ; then
   fi
 fi
 
+echo "Files Changed:  $FILES_CHANGED"
+echo "Python Changed: $PY_FILES_CHANGED"
+
 
 if [ "${MATRIX_SHARD}" == "sanity" ] ; then
   FAUCET_TESTS="-u FaucetSanityTest"
