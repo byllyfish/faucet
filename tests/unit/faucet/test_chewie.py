@@ -2,9 +2,9 @@
 
 """Unit tests run as PYTHONPATH=../../.. python3 ./test_chewie.py."""
 
-from queue import Queue
+import asyncio
+from asyncio import Queue
 import random
-import time
 import unittest
 from unittest.mock import patch
 
@@ -91,37 +91,37 @@ def do_nothing(chewie):  # pylint: disable=unused-argument
     pass
 
 
-def eap_receive(chewie):  # pylint: disable=unused-argument
+async def eap_receive(chewie):  # pylint: disable=unused-argument
     """mocked chewie.eap_receive"""
-    return FROM_SUPPLICANT.get()
+    return await FROM_SUPPLICANT.get()
 
 
 def eap_send(chewie, data):  # pylint: disable=unused-argument
     """mocked chewie.eap_send"""
 
-    TO_SUPPLICANT.put(data)
+    TO_SUPPLICANT.put_nowait(data)
     try:
         _next = next(SUPPLICANT_REPLY_GENERATOR)
     except StopIteration:
         return
     if _next:
-        FROM_SUPPLICANT.put(_next)
+        FROM_SUPPLICANT.put_nowait(_next)
 
 
-def radius_receive(chewie):  # pylint: disable=unused-argument
+async def radius_receive(chewie):  # pylint: disable=unused-argument
     """mocked chewie.radius_radius"""
-    return FROM_RADIUS.get()
+    return await FROM_RADIUS.get()
 
 
 def radius_send(chewie, data):  # pylint: disable=unused-argument
     """mocked chewie.radius_send"""
-    TO_RADIUS.put(data)
+    TO_RADIUS.put_nowait(data)
     try:
         _next = next(RADIUS_REPLY_GENERATOR)
     except StopIteration:
         return
     if _next:
-        FROM_RADIUS.put(_next)
+        FROM_RADIUS.put_nowait(_next)
 
 
 def nextId(eap_sm):  # pylint: disable=invalid-name
@@ -169,10 +169,13 @@ class FaucetDot1XTest(ValveTestBases.ValveTestSmall):
     @patch('faucet.faucet_dot1x.chewie.Chewie.get_interface_info', do_nothing)
     @patch('faucet.faucet_dot1x.chewie.Chewie.join_multicast_group', do_nothing)
     def test_success_dot1x(self):
+        asyncio.get_event_loop().run_until_complete(self._success_dot1x())
+
+    async def _success_dot1x(self):
         """Test success api"""
 
-        FROM_SUPPLICANT.put(build_byte_string("0000000000010242ac17006f888e01010000"))
-        time.sleep(5)
+        FROM_SUPPLICANT.put_nowait(build_byte_string("0000000000010242ac17006f888e01010000"))
+        await asyncio.sleep(5)
         with open('%s/faucet.log' % self.tmpdir, 'r') as log:
             for line in log.readlines():
                 if 'Successful auth' in line:

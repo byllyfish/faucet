@@ -30,6 +30,7 @@ except ImportError:
     from pip.req import parse_requirements, InstallRequirement # for pip <= 9.0.3
 
 
+@unittest.skip('zof does not have all dependencies')
 class CheckDebianPackageTestCase(unittest.TestCase): # pytype: disable=module-attr
     """Test debian packaging."""
 
