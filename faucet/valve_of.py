@@ -36,6 +36,7 @@ OFP_IN_PORT = ofp.OFPP_IN_PORT
 MAX_PACKET_IN_BYTES = 128
 ECTP_ETH_TYPE = 0x9000
 
+'''
 OFERROR_TYPE_CODE = {
     0: ('OFPET_HELLO_FAILED', {
         ofp.OFPHFC_INCOMPATIBLE: 'OFPHFC_INCOMPATIBLE',
@@ -164,7 +165,7 @@ OFERROR_TYPE_CODE = {
         ofp.OFPTFFC_EPERM: 'OFPTFFC_EPERM'}),
     65535: ('OFPET_EXPERIMENTER', {}),
 }
-
+'''
 
 def ignore_port(port_num):
     """Return True if FAUCET should ignore this port.
@@ -795,6 +796,13 @@ _OFMSG_ORDER = (
 )
 
 
+def _has_priority(ofmsg):
+    msg = ofmsg.get('msg')
+    if msg:
+        return 'priority' in msg
+    return False
+
+
 def valve_flowreorder(input_ofmsgs, use_barriers=True):
     """Reorder flows for better OFA performance."""
     # Move all deletes to be first, and add one barrier,
@@ -809,11 +817,12 @@ def valve_flowreorder(input_ofmsgs, use_barriers=True):
             if random_order:
                 random.shuffle(ofmsgs)
             else:
-                with_priorities = [ofmsg for ofmsg in ofmsgs if hasattr(ofmsg, 'priority')]
+                print(ofmsgs)
+                with_priorities = [ofmsg for ofmsg in ofmsgs if _has_priority(ofmsg)]
                 # If priority present, send highest priority first.
                 if with_priorities:
-                    with_priorities.sort(key=lambda ofmsg: ofmsg.priority, reverse=True)
-                    without_priorities = [ofmsg for ofmsg in ofmsgs if not hasattr(ofmsg, 'priority')]
+                    with_priorities.sort(key=lambda ofmsg: ofmsg['msg']['priority'], reverse=True)
+                    without_priorities = [ofmsg for ofmsg in ofmsgs if not _has_priority(ofmsg)]
                     ofmsgs = without_priorities + with_priorities
             output_ofmsgs.extend(ofmsgs)
             if use_barriers and suggest_barrier:

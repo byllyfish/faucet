@@ -1523,18 +1523,13 @@ class Valve:
             msg (ryu.controller.ofp_event.EventOFPMsgBase): message from datapath.
         """
         self._inc_var('of_errors')
+        print(self.recent_ofmsgs)
         orig_msgs = [orig_msg for orig_msg in self.recent_ofmsgs if orig_msg.get('xid') == msg['xid']]
         error_txt = msg
         if orig_msgs:
             error_txt = '%s caused by %s' % (error_txt, orig_msgs[0])
-        error_type = 'UNKNOWN'
-        error_code = 'UNKNOWN'
-        try:
-            error_tuple = valve_of.OFERROR_TYPE_CODE[msg.type]
-            error_type = error_tuple[0]
-            error_code = error_tuple[1][msg.code]
-        except KeyError:
-            pass
+        error_type = msg['msg']['type']
+        error_code = msg['msg']['code']
         self.logger.error('OFError type: %s code: %s %s' % (error_type, error_code, error_txt))
 
     def prepare_send_flows(self, flow_msgs):
