@@ -1523,7 +1523,6 @@ class Valve:
             msg (ryu.controller.ofp_event.EventOFPMsgBase): message from datapath.
         """
         self._inc_var('of_errors')
-        print(self.recent_ofmsgs)
         orig_msgs = [orig_msg for orig_msg in self.recent_ofmsgs if orig_msg.get('xid') == msg['xid']]
         error_txt = msg
         if orig_msgs:

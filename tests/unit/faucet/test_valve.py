@@ -664,7 +664,8 @@ class ValveTestBases:
             msg = {'type': 'FLOW_MOD', 'datapath': datapath}
             msg['xid'] = 123
             self.valve.recent_ofmsgs.append(msg)
-            test_error = {'type': 'ERROR', 'datapath': datapath, 'xid': 123, 'msg': msg}
+            test_error = {'type': 'ERROR', 'datapath': datapath, 'xid': 123, 
+                          'msg': {'type': 'BAD_REQUEST', 'code': 'OFPBRC_BAD_LEN'}}
             self.valve.oferror(test_error)
 
         def test_tfm(self):

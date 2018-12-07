@@ -817,7 +817,6 @@ def valve_flowreorder(input_ofmsgs, use_barriers=True):
             if random_order:
                 random.shuffle(ofmsgs)
             else:
-                print(ofmsgs)
                 with_priorities = [ofmsg for ofmsg in ofmsgs if _has_priority(ofmsg)]
                 # If priority present, send highest priority first.
                 if with_priorities:
