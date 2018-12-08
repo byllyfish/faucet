@@ -161,7 +161,7 @@ Example:
         super(GaugePortStatsInfluxDBLogger, self).update(rcv_time, dp_id, msg)
         points = []
         for stat in msg:
-            port_name = str(stat.port_no)
+            port_name = str(stat['port_no'])
             for stat_name, stat_val in self._format_port_stats('_', stat):
                 points.append(
                     self.make_port_point(
