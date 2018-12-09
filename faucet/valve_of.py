@@ -328,7 +328,7 @@ def dedupe_output_port_acts(output_port_acts):
         list of ryu.ofproto.ofproto_v1_3_parser.OFPActionOutput: output to port actions.
     """
     output_ports = {output_port_act['port_no'] for output_port_act in output_port_acts}
-    return [output_port(port) for port in sorted(output_ports)]
+    return [output_port(port) for port in sorted(output_ports, key=str)]
 
 
 def output_in_port():
