@@ -57,8 +57,6 @@ SUPPORTS_METADATA = (
 
 
 EXTERNAL_DEPENDENCIES = (
-    ('ryu-manager', ['--version'],
-     'ryu-manager', r'ryu-manager (\d+\.\d+)\n', "4.9"),
     ('ovs-vsctl', ['--version'], 'Open vSwitch',
      r'ovs-vsctl\s+\(Open vSwitch\)\s+(\d+\.\d+)\.\d+\n', "2.3"),
     ('tcpdump', ['-h'], 'tcpdump',
@@ -668,6 +666,7 @@ def test_main(module):
     """Test main."""
     setLogLevel('error')
     print('testing module %s' % module)
+    print('python %s' % sys.version)
     (requested_test_classes, clean, dumpfail, keep_logs, nocheck,
      serial, excluded_test_classes, report_json_filename) = parse_args()
 

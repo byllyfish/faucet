@@ -23,6 +23,7 @@ import time
 import gzip
 
 from faucet.valve_util import dpid_log
+from faucet.valve_of import ofp
 from faucet.gauge_influx import GaugePortStateInfluxDBLogger, GaugePortStatsInfluxDBLogger, GaugeFlowTableInfluxDBLogger
 from faucet.gauge_pollers import GaugePortStatePoller, GaugePortStatsPoller, GaugeFlowTablePoller
 from faucet.gauge_prom import GaugePortStatsPrometheusPoller, GaugePortStatePrometheusPoller, GaugeFlowTablePrometheusPoller
@@ -69,16 +70,15 @@ class GaugePortStateLogger(GaugePortStatePoller):
 
     def update(self, rcv_time, dp_id, msg):
         rcv_time_str = _rcv_time(rcv_time)
-        reason = msg.reason
-        port_no = msg.desc.port_no
-        ofp = msg.datapath.ofproto
+        reason = msg['reason']
+        port_no = msg['port_no']
         log_msg = 'port %s unknown state %s' % (port_no, reason)
         if reason == ofp.OFPPR_ADD:
             log_msg = 'port %s added' % port_no
         elif reason == ofp.OFPPR_DELETE:
             log_msg = 'port %s deleted' % port_no
         elif reason == ofp.OFPPR_MODIFY:
-            link_down = (msg.desc.state & ofp.OFPPS_LINK_DOWN)
+            link_down = ofp.port_state(msg['state'])
             if link_down:
                 log_msg = 'port %s down' % port_no
             else:
@@ -110,8 +110,8 @@ class GaugePortStatsLogger(GaugePortStatsPoller):
     def update(self, rcv_time, dp_id, msg):
         super(GaugePortStatsLogger, self).update(rcv_time, dp_id, msg)
         rcv_time_str = _rcv_time(rcv_time)
-        for stat in msg.body:
-            port_name = self.dp.port_labels(stat.port_no)['port']
+        for stat in msg:
+            port_name = self.dp.port_labels(stat['port_no'])['port']
             with open(self.conf.file, 'a') as logfile:
                 log_lines = []
                 for stat_name, stat_val in self._format_port_stats('-', stat):
@@ -141,7 +141,7 @@ class GaugeFlowTableLogger(GaugeFlowTablePoller):
         jsondict = {}
         jsondict['time'] = rcv_time_str
         jsondict['ref'] = '-'.join((self.dp.name, 'flowtables'))
-        jsondict['msg'] = msg.to_jsondict()
+        jsondict['msg'] = msg
         filename = self.conf.file
         outstr = '---\n{}\n'.format(json.dumps(jsondict))
         if self.conf.compress:

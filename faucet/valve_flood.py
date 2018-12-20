@@ -128,7 +128,7 @@ class ValveFloodManager(ValveManagerBase):
 
     @staticmethod
     def _output_ports_from_actions(flood_acts):
-        return {act.port for act in flood_acts if valve_of.is_output(act)}
+        return {act['port_no'] for act in flood_acts if valve_of.is_output(act)}
 
     def _build_mask_flood_rules(self, vlan, eth_dst, eth_dst_mask, # pylint: disable=too-many-arguments
                                 exclude_unicast, command):

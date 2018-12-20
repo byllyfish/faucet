@@ -1162,10 +1162,10 @@ class FaucetSanityTest(FaucetUntaggedTest):
             if port_speed_mbps < min_mbps:
                 error('port speed %u below minimum %u mbps\n' % (
                     port_speed_mbps, min_mbps))
-            elif port_config != 0:
-                error('port config %u must be 0 (all clear)' % port_config)
-            elif port_state not in (0, 4):
-                error('state %u must be 0 (all flags clear or live)\n' % (
+            elif port_config != []:
+                error('port config %r must be 0 (all clear)' % port_config)
+            elif port_state not in ([], ['LIVE']):
+                error('state %r must be 0 (all flags clear or live)\n' % (
                     port_state))
             else:
                 return
@@ -4571,8 +4571,8 @@ vlans:
         self.assertTrue(drop_rules)
         for drop_rule in drop_rules:
             match = drop_rule['match']
-            del match['dl_type']
-            del match['dl_vlan']
+            del match['eth_type']
+            del match['vlan_vid']
             self.assertEqual(1, len(match))
             ipd = list(match.values())[0].split('/')[0]
             required_ipds.remove(ipd)
@@ -6915,6 +6915,15 @@ acls:
             source_host, overridden_host, rewrite_host, overridden_host)
 
 
+def _find_matching_log_line(patterns, filename):
+    """Return first line from file that matches all the regex patterns."""
+    with open(filename) as afile:
+        for line in afile:
+            if all(re.search(pat, line) for pat in patterns):
+                return line
+    return None
+
+
 @unittest.skip('use_idle_timeout unreliable')
 class FaucetWithUseIdleTimeoutTest(FaucetUntaggedTest):
     CONFIG_GLOBAL = """
@@ -6934,22 +6943,22 @@ vlans:
         self.fail('host %s still learned' % host)
 
     def wait_for_flowremoved_msg(self, src_mac=None, dst_mac=None, timeout=30):
-        pattern = "OFPFlowRemoved"
+        patterns = ["'type': 'FLOW_REMOVED'", "'reason': 'IDLE_TIMEOUT'"]
         mac = None
         if src_mac:
-            pattern = "OFPFlowRemoved(.*)'eth_src': '%s'" % src_mac
+            patterns.extend(["'field': 'ETH_SRC'", "'value': '%s'" % src_mac])
             mac = src_mac
         if dst_mac:
-            pattern = "OFPFlowRemoved(.*)'eth_dst': '%s'" % dst_mac
+            patterns.extend(["'field': 'ETH_DST'", "'value': '%s'" % dst_mac])
             mac = dst_mac
         for _ in range(timeout):
             for _, debug_log_name in self._get_ofchannel_logs():
-                with open(debug_log_name) as debug_log:
-                    debug = debug_log.read()
-                if re.search(pattern, debug):
+                found = _find_matching_log_line(patterns, debug_log_name)
+                if found:
+                    print(found)
                     return
             time.sleep(1)
-        self.fail('Not received OFPFlowRemoved for host %s' % mac)
+        self.fail('Not received FLOW_REMOVED for host %s' % mac)
 
     def wait_for_host_log_msg(self, host_mac, msg, timeout=15):
         controller = self._get_controller()

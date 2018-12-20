@@ -1,7 +1,5 @@
 """Configure switch tables with TFM messages."""
 
-from faucet import valve_of
-
 
 def load_tables(dp, valve_cl): # pylint: disable=invalid-name
     """Configure switch tables with TFM messages."""
@@ -9,82 +7,65 @@ def load_tables(dp, valve_cl): # pylint: disable=invalid-name
     active_table_ids = sorted([valve_table.table_id for valve_table in dp.tables.values()])
     for table_id in active_table_ids:
         valve_table = dp.table_by_id(table_id)
-        table_attr = {
-            'config': 3,
+        new_table = {
+            'config': ['0x03'],
             'max_entries': valve_table.table_config.size,
             'metadata_match': valve_table.metadata_match,
             'metadata_write': valve_table.metadata_write,
-            'name': valve_table.name.encode('utf-8'),
-            'properties': [],
+            'name': valve_table.name,
             'table_id': table_id,
+            'write_actions': [],
+            'write_set_field': [],
+            'apply_set_field': [],
+            'wildcards': [],
+            'next_tables': [],
         }
-        if valve_table.metadata_match:
-            table_attr.update({'metadata_match': valve_table.metadata_match})
-        if valve_table.metadata_write:
-            table_attr.update({'metadata_write': valve_table.metadata_write})
-        new_table = valve_of.parser.OFPTableFeaturesStats(**table_attr)
         # Match types
         if valve_table.match_types:
             oxm_ids = [
-                valve_of.parser.OFPOxmId(type_=match_type, hasmask=hasmask)
+                _oxmid(match_type, hasmask) 
                 for match_type, hasmask in valve_table.match_types.items()]
-            new_table.properties.append(
-                valve_of.parser.OFPTableFeaturePropOxm(
-                    oxm_ids=oxm_ids, type_=valve_of.ofp.OFPTFPT_MATCH))
+            new_table['match'] = oxm_ids
             # Not an exact match table, assume all fields wildcarded.
             if not valve_table.exact_match:
-                new_table.properties.append(
-                    valve_of.parser.OFPTableFeaturePropOxm(
-                        oxm_ids=oxm_ids, type_=valve_of.ofp.OFPTFPT_WILDCARDS))
-        insts = set([valve_of.ofp.OFPIT_APPLY_ACTIONS])
+                new_table['wildcards'] = oxm_ids
+        insts = ['APPLY_ACTIONS']
         # Next tables
         if valve_table.next_tables:
-            new_table.properties.append(valve_of.parser.OFPTableFeaturePropNextTables(
-                table_ids=valve_table.next_tables,
-                type_=valve_of.ofp.OFPTFPT_NEXT_TABLES))
-            insts.add(valve_of.ofp.OFPIT_GOTO_TABLE)
+            new_table['next_tables'] = valve_table.next_tables
+            insts.append('GOTO_TABLE')
         # Instructions
         if valve_table.table_config.meter:
-            insts.add(valve_of.ofp.OFPIT_METER)
-        inst_ids = [valve_of.parser.OFPInstructionId(type_) for type_ in insts]
-        new_table.properties.append(
-            valve_of.parser.OFPTableFeaturePropInstructions(
-                type_=valve_of.ofp.OFPTFPT_INSTRUCTIONS, instruction_ids=inst_ids))
-        apply_actions = set()
+            insts.append('METER')
+        new_table['instructions'] = insts
+        apply_actions = []
         if valve_table.table_config.dec_ttl and valve_cl.DEC_TTL:
-            apply_actions.add(valve_of.ofp.OFPAT_DEC_NW_TTL)
+            apply_actions.append('DEC_NW_TTL')
         # Set fields and apply actions
         if valve_table.set_fields:
-            apply_actions.add(valve_of.ofp.OFPAT_SET_FIELD)
+            apply_actions.append('SET_FIELD')
             if 'vlan_vid' in valve_table.set_fields:
-                apply_actions.add(valve_of.ofp.OFPAT_PUSH_VLAN)
-            oxm_ids = [
-                valve_of.parser.OFPOxmId(type_=field, hasmask=False)
-                for field in valve_table.set_fields]
-            new_table.properties.append(
-                valve_of.parser.OFPTableFeaturePropOxm(
-                    oxm_ids=oxm_ids, type_=valve_of.ofp.OFPTFPT_APPLY_SETFIELD))
+                apply_actions.append('PUSH_VLAN')
+            oxm_ids = [_oxmid(field) for field in valve_table.set_fields]
+            new_table['apply_set_field'] = oxm_ids
         if valve_table.table_config.output:
-            apply_actions.add(valve_of.ofp.OFPAT_OUTPUT)
-            apply_actions.add(valve_of.ofp.OFPAT_POP_VLAN)
+            apply_actions.append('OUTPUT')
+            apply_actions.append('POP_VLAN')
             if valve_cl.GROUPS:
-                apply_actions.add(valve_of.ofp.OFPAT_GROUP)
-        if apply_actions:
-            action_ids = [
-                valve_of.parser.OFPActionId(type_) for type_ in apply_actions]
-            new_table.properties.append(
-                valve_of.parser.OFPTableFeaturePropActions(
-                    type_=valve_of.ofp.OFPTFPT_APPLY_ACTIONS, action_ids=action_ids))
+                apply_actions.append('GROUP')
+        new_table['apply_actions'] = apply_actions
         # Miss goto table option.
         if valve_table.table_config.miss_goto:
             miss_table_id = dp.tables[valve_table.table_config.miss_goto].table_id
-            new_table.properties.append(
-                valve_of.parser.OFPTableFeaturePropNextTables(
-                    table_ids=[miss_table_id], type_=valve_of.ofp.OFPTFPT_NEXT_TABLES_MISS))
-            inst_ids = [valve_of.parser.OFPInstructionId(valve_of.ofp.OFPIT_GOTO_TABLE)]
-            new_table.properties.append(
-                valve_of.parser.OFPTableFeaturePropInstructions(
-                    type_=valve_of.ofp.OFPTFPT_INSTRUCTIONS_MISS, instruction_ids=inst_ids))
+            new_table['next_tables_miss'] = [miss_table_id]
+            new_table['instructions_miss'] = ['GOTO_TABLE']
 
         table_array.append(new_table)
     return table_array
+
+
+def _oxmid(match_type, hasmask=False):
+    """Convert to zof OXM ID format (where appended slash indicates mask)."""
+    if hasmask:
+        return '%s/' % match_type.upper()
+    return match_type.upper()
