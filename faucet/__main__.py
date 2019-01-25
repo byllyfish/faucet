@@ -201,9 +201,9 @@ def run(sys_args):
     logging.getLogger().error('args %r', args)
     print(sys_args)
 
-    config = zof.Configuration(
-        listen_endpoints = ['%s:%s' % (args.ryu_ofp_listen_host, args.ryu_ofp_tcp_listen_port)]
-    )
+    config = zof.Configuration()
+    if args.ryu_ofp_tcp_listen_port:
+        config.listen_endpoints = [(args.ryu_ofp_listen_host, args.ryu_ofp_tcp_listen_port)]
 
     if args.gauge:
         app = Gauge()
@@ -215,6 +215,10 @@ def run(sys_args):
         from zof.extra.rest_api import RestApi
         rest_endpoint = (args.ryu_wsapi_host, args.ryu_wsapi_port)
         services.append(RestApi(rest_endpoint))
+
+    if 'experimental_api_test_app.py' in args.ryu_app:
+        from tests.integration.experimental_api_test_app import TestFaucetExperimentalAPIViaRyu
+        services.append(TestFaucetExperimentalAPIViaRyu())
 
     with pid_file(args.ryu_pid_file):
         asyncio.run(zof.run_controller(app, config=config, services=services))
@@ -242,10 +246,13 @@ def parse_ryu_args(ryu_args):
 
 @contextlib.contextmanager
 def pid_file(pid_path):
-    with open(pid_path, 'w') as pid_file:
-        pid_file.write(str(os.getpid()))
-    yield
-    os.unlink(pid_path)
+    if pid_path:
+        with open(pid_path, 'w') as pid_file:
+            pid_file.write(str(os.getpid()))
+        yield
+        os.unlink(pid_path)
+    else:
+        yield
 
 
 if __name__ == '__main__':

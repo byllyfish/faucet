@@ -63,7 +63,6 @@ class Faucet(RyuAppBase):
             self.logname, self.logger, self.metrics, self.notifier, self.bgp,
             self.dot1x, self._send_flow_msgs)
 
-    @kill_on_exception(exc_logname)
     async def on_start(self):
         await super().on_start()
 
@@ -93,7 +92,6 @@ class Faucet(RyuAppBase):
         self.api._register(self)
         zof.post_event({'type': 'FAUCET_API_READY', 'faucet_api': self.api})
 
-    @kill_on_exception(exc_logname)
     def on_stop(self):
         """Called when app stops."""
         super().on_stop()
@@ -264,11 +262,3 @@ class Faucet(RyuAppBase):
             return
         if msg['reason'] == valve_of.ofp.OFPRR_IDLE_TIMEOUT:
             self._send_flow_msgs(valve, valve.flow_timeout(time.time(), msg['table_id'], msg['match']))
-
-    #@kill_on_exception(exc_logname)
-    #def on_channel_alert(self, _dp, event):
-    #    """Handle a channel alert event."""
-    #    message = event['msg']['message']
-    #    if message.startswith('YAML:'):
-    #        # There was a problem with something we sent.
-    #        raise RuntimeError('CHANNEL_ALERT: %s' % message)

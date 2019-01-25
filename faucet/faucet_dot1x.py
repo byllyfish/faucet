@@ -72,7 +72,7 @@ class FaucetDot1x:
             dot1x_intf, self.logger,
             self.auth_handler, self.failure_handler, self.logoff_handler,
             radius_ip, radius_port, radius_secret, chewie_id)
-        zof.ensure_future(_chewie.run())
+        zof.create_task(_chewie.run())
         return _chewie
 
     def get_valve_and_port(self, port_id):
