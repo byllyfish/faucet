@@ -216,7 +216,7 @@ def run(sys_args):
         rest_endpoint = (args.ryu_wsapi_host, args.ryu_wsapi_port)
         services.append(RestApi(rest_endpoint))
 
-    if 'experimental_api_test_app.py' in args.ryu_app:
+    if args.ryu_app and 'experimental_api_test_app.py' in args.ryu_app:
         from tests.integration.experimental_api_test_app import TestFaucetExperimentalAPIViaRyu
         services.append(TestFaucetExperimentalAPIViaRyu())
 
