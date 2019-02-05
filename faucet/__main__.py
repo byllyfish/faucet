@@ -114,144 +114,48 @@ def print_version():
     print(message)
 
 
-def build_ryu_args(argv):
-    args = parse_args(argv[1:])
-
-    # Checking version number?
-    if args.version:
-        print_version()
-        return []
-
-    prog = os.path.basename(argv[0])
-    ryu_args = []
-
-    # Handle log location
-    if args.use_stderr:
-        ryu_args.append('--use-stderr')
-    if args.use_syslog:
-        ryu_args.append('--use-syslog')
-
-    # Verbose output?
-    if args.verbose:
-        ryu_args.append('--verbose')
-
-    for arg, val in vars(args).items():
-        if not val or not arg.startswith('ryu'):
-            continue
-        if arg == 'ryu_app':
-            continue
-        if arg == 'ryu_config_file' and not os.path.isfile(val):
-            continue
-        arg_name = arg.replace('ryu_', '').replace('_', '-')
-        ryu_args.append('--%s=%s' % (arg_name, val))
-
-    # Running Faucet or Gauge?
-    apps = []
-    if args.gauge or os.path.basename(prog) == 'gauge':
-        apps.append('faucet.gauge')
-    else:
-        apps.append('faucet.faucet')
-
-    # Check for additional Ryu apps.
-    if args.ryu_app:
-        apps.extend(args.ryu_app)
-
-    if 'ryu.app.ofctl_rest' in apps:
-        apps.remove('ryu.app.ofctl_rest')
-    if 'experimental_api_test_app.py' in apps:
-        apps.remove('experimental_api_test_app.py')
-        apps.append('tests.integration.experimental_api_test_app')
-
-
-    #ryu_args.append('--x-modules=%s' % ','.join(apps))
-
-    return ryu_args
-
-
 def main():
     """Main program."""
-    #ryu_args = build_ryu_args(sys.argv)
-    #if ryu_args:
-    run(sys.argv)
+    args = parse_args(sys.argv[1:])
+    prog = os.path.basename(sys.argv[0])
 
-
-def run(sys_args):
-    """Run app."""
-    '''
-    args = parse_ryu_args(ryu_args)
-    if args.wsapi_port:
-        from zof.demo.rest_api import APP as rest_app
-        rest_app.http_endpoint = '%s:%d' % (args.wsapi_host or '', args.wsapi_port)
-
-    # Map ryu arguments to framework's argument names.
-    args.listen_endpoints = ['%s:%d' % (args.ofp_listen_host, args.ofp_tcp_listen_port)]
-    args.listen_cert = args.ctl_cert
-    args.listen_cacert = args.ca_certs
-    args.listen_privkey = args.ctl_privkey
-    args.listen_versions = [4]
-    args.pidfile = args.pid_file
-    #args.x_oftr_args='--trace=rpc'
-    #args.loglevel='debug'
-    #print('args=%r' % args)
-    #_import_modules(args.x_modules)
-    #zof.run(args=args)
-    '''
-
-    args = parse_args(sys_args[1:])
-    logging.getLogger().error('args %r', args)
-    print(sys_args)
+    if args.version:
+        print_version()
+        return
 
     config = zof.Configuration()
     if args.ryu_ofp_tcp_listen_port:
         config.listen_endpoints = [(args.ryu_ofp_listen_host, args.ryu_ofp_tcp_listen_port)]
 
-    if args.gauge:
-        app = Gauge()
+    apps = []
+    if args.gauge or prog == 'gauge':
+        apps.append(Gauge())
     else:
-        app = Faucet()
+        apps.append(Faucet())
 
-    services = []
     if args.ryu_wsapi_port:
         from zof.extra.rest_api import RestApi
         rest_endpoint = (args.ryu_wsapi_host, args.ryu_wsapi_port)
-        services.append(RestApi(rest_endpoint))
+        apps.append(RestApi(rest_endpoint))
 
     if args.ryu_app and 'experimental_api_test_app.py' in args.ryu_app:
         from tests.integration.experimental_api_test_app import TestFaucetExperimentalAPIViaRyu
-        services.append(TestFaucetExperimentalAPIViaRyu())
+        apps.append(TestFaucetExperimentalAPIViaRyu())
 
     with pid_file(args.ryu_pid_file):
-        asyncio.run(zof.run_controller(app, config=config, services=services))
-
-
-def parse_ryu_args(ryu_args):
-    # Add RYU compatible arguments.
-    #import zof.demo.metrics
-    args = argparse.ArgumentParser()
-    args.add_argument('--verbose', action='store_true')
-    args.add_argument('--use-stderr', action='store_true')
-    args.add_argument('--wsapi-host')
-    args.add_argument('--wsapi-port', type=int)
-    args.add_argument('--ofp-listen-host', default='')
-    args.add_argument('--ofp-tcp-listen-port', type=int, default=6653)
-    #args.add_argument('--ctl-privkey', type=file_contents_type())
-    #args.add_argument('--ctl-cert', type=file_contents_type())
-    #args.add_argument('--ca-certs', type=file_contents_type())
-    args.add_argument('--pid-file')
-    args.add_argument('--config-file')
-    #metrics_endpoint = '%s:%s' % (get_setting('FAUCET_PROMETHEUS_ADDR'), get_setting('FAUCET_PROMETHEUS_PORT'))
-    #args.set_defaults(metrics_endpoint=metrics_endpoint)
-    return args.parse_args(ryu_args)
+        asyncio.run(zof.run_controller(apps, config=config))
 
 
 @contextlib.contextmanager
 def pid_file(pid_path):
+    """Context manager for PID file."""
     if pid_path:
-        with open(pid_path, 'w') as pid_file:
-            pid_file.write(str(os.getpid()))
+        with open(pid_path, 'w') as afile:
+            afile.write(str(os.getpid()))
         yield
         os.unlink(pid_path)
     else:
+        # Noop when pidfile is None/empty.
         yield
 
 
