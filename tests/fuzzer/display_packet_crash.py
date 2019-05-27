@@ -20,7 +20,7 @@ def main():
     application = faucet.Faucet(
         dpset=dpset.DPSet(),
         faucet_experimental_api=faucet_experimental_api.FaucetExperimentalAPI())
-    application.start()
+    application.start(None)
 
     # make sure dps are running
     if application.valves_manager is not None:

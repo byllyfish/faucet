@@ -27,9 +27,19 @@ from faucet import valve_of
 class ValveOfTestCase(unittest.TestCase): # pytype: disable=module-attr
     """Test valve_of functions."""
 
+    @staticmethod
+    def _output_port(port_num):
+        """Return FlowMod with output action."""
+        actions = [valve_of.output_port(port_num)]
+        instrs = [valve_of.apply_actions(actions)]
+        return valve_of.flowmod(
+            cookie=None, hard_timeout=None, idle_timeout=None, match_fields=None, out_port=None,
+            table_id=1, inst=instrs, priority=1000, command=valve_of.ofp.OFPFC_ADD,
+            out_group=valve_of.ofp.OFPG_ANY)
+
     def test_reorder_dupe(self):
         """Test simple reordering discards duplicate."""
-        flow = valve_of.output_port(1)
+        flow = self._output_port(1)
         flows = [flow, flow, flow]
         reordered = valve_of.valve_flowreorder(flows, use_barriers=False)
         self.assertEqual(1, len(reordered))
@@ -45,7 +55,7 @@ class ValveOfTestCase(unittest.TestCase): # pytype: disable=module-attr
             cookie=None, hard_timeout=None, idle_timeout=None, match_fields=None, out_port=None,
             table_id=9, inst=[], priority=0, command=valve_of.ofp.OFPFC_DELETE,
             out_group=valve_of.ofp.OFPG_ANY)
-        flow = valve_of.output_port(1)
+        flow = self._output_port(1)
         flows = [flowdel, flow, flow, flow, global_flowdel, global_groupdel]
         reordered = valve_of.valve_flowreorder(flows, use_barriers=True)
         reordered_str = [str(flow) for flow in reordered]
@@ -58,6 +68,7 @@ class ValveOfTestCase(unittest.TestCase): # pytype: disable=module-attr
         self.assertTrue(str(flowdel) not in reordered_str, msg=reordered)
         # with regular flow last
         self.assertEqual(str(flow), reordered_str[-1], msg=reordered)
+        self.assertEqual(4, len(reordered), msg=reordered)
 
 
 if __name__ == "__main__":

@@ -129,9 +129,9 @@ class ValveFloodManager(ValveManagerBase):
         # port numbers as integers which is much cheaper.
         for act in flood_acts:
             if valve_of.is_output(act):
-                if act.port in output_ports:
+                if act['port_no'] in output_ports:
                     continue
-                output_ports.add(act.port)
+                output_ports.add(act['port_no'])
             else:
                 str_act = str(act)
                 if str_act in all_nonoutput_actions:

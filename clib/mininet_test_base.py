@@ -616,10 +616,19 @@ class FaucetTestBase(unittest.TestCase):
         return result
 
     @staticmethod
-    def _signal_proc_on_port(host, port, signal):
+    def _signal_proc_on_port(host, port, signal, parent=False):
         tcp_pattern = '%s/tcp' % port
-        fuser_out = host.cmd('fuser %s -k -%u' % (tcp_pattern, signal))
-        return re.search(r'%s:\s+\d+' % tcp_pattern, fuser_out)
+        if parent:
+            # For zof, we really need to signal the *parent* process.
+            fuser_out = host.cmd('fuser %s' % tcp_pattern)
+            m = re.search(r'%s:\s+(\d+)' % tcp_pattern, fuser_out)
+            if not m:
+                return False
+            kill_out = host.cmd('kill -%u `ps -o ppid= %s`' % (signal, m.group(1)))
+            return True
+        else:
+            fuser_out = host.cmd('fuser %s -k -%u' % (tcp_pattern, signal))
+            return re.search(r'%s:\s+\d+' % tcp_pattern, fuser_out)
 
     def _get_ofchannel_logs(self):
         ofchannel_logs = []
@@ -855,15 +864,21 @@ dbs:
         def to_old_match(match):
             old_matches = {
                 'tcp_dst': 'tp_dst',
+                'tcp_src': 'tp_src',
                 'ip_proto': 'nw_proto',
+                'ipv4_dst': 'nw_dst',
                 'eth_dst': 'dl_dst',
+                'eth_src': 'dl_src',
                 'eth_type': 'dl_type',
+                'vlan_vid': 'dl_vlan'
             }
-            if match is not None:
+            if match is not None:   
                 for new_match, old_match in old_matches.items():
-                    if new_match in match:
-                        match[old_match] = match[new_match]
-                        del match[new_match]
+                    if old_match in match:  
+                        match[new_match] = match.pop(old_match)
+                # Vlan has to be an integer with vlan present bit set.
+                if 'vlan_vid' in match:
+                    match['vlan_vid'] = int(match['vlan_vid']) | 0x1000
             return match
 
         flowdump = os.path.join(self.tmpdir, 'flowdump-%s.log' % dpid)
@@ -1300,12 +1315,12 @@ dbs:
         """Send a HUP signal to the controller."""
         controller = self._get_controller()
         self.assertTrue(
-            self._signal_proc_on_port(controller, controller.port, 1))
+            self._signal_proc_on_port(controller, controller.port, 1, True))
 
     def hup_gauge(self):
         self.assertTrue(
             self._signal_proc_on_port(
-                self.gauge_controller, int(self.gauge_of_port), 1))
+                self.gauge_controller, int(self.gauge_of_port), 1, True))
 
     def reload_conf(self, yaml_conf, conf_path, restart, cold_start,
                     change_expected=True, host_cache=None, hup=True):

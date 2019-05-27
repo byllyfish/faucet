@@ -201,7 +201,7 @@ class ValvesManager:
     def port_status_handler(self, valve, msg):
         """Handle a port status change message."""
         ofmsgs_by_valve = valve.port_status_handler(
-            msg.desc.port_no, msg.reason, msg.desc.state, self._other_running_valves(valve))
+            msg['port_no'], msg['reason'], msg['state'], self._other_running_valves(valve))
         self._send_ofmsgs_by_valve(ofmsgs_by_valve)
 
     def valve_packet_in(self, now, valve, msg):

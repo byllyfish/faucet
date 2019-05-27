@@ -19,11 +19,12 @@
 # limitations under the License.
 
 from urllib.parse import parse_qs
+import asyncio
 
-from ryu.lib import hub
 from pbr.version import VersionInfo
 from prometheus_client import Gauge as PromGauge
 from prometheus_client import generate_latest, CONTENT_TYPE_LATEST, REGISTRY
+import zof
 
 
 # Ryu's WSGI implementation doesn't always set QUERY_STRING
@@ -84,6 +85,18 @@ class PromClient: # pylint: disable=too-few-public-methods
                 self.thread.daemon = True
                 self.thread.start()
             else:
-                self.server = hub.WSGIServer((prom_addr, int(prom_port)), app)
-                self.thread = hub.spawn(self.server.serve_forever)
-            self.thread.name = 'prometheus'
+                from zof.http import HttpServer
+                web = HttpServer()
+                
+                @web.get('/?{name[]}')
+                @web.get('/metrics?{name[]}')
+                @web.get('/metrics/?{name[]}')
+                def _metrics(name):
+                    reg = REGISTRY
+                    if name:
+                        reg = reg.restricted_registry(name)
+                    return generate_latest(reg)
+
+                endpoint = '[%s]:%d' % (prom_addr, int(prom_port))
+                zof.ensure_future(web.serve_forever(endpoint))
+                self.server = web

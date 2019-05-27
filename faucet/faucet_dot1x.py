@@ -16,13 +16,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import eventlet
 
-eventlet.monkey_patch()
-
-from ryu.lib import hub  # pylint: disable=wrong-import-position
 from chewie import chewie  # pylint: disable=wrong-import-position
 from faucet.valve_util import kill_on_exception
+
+import zof
+
 
 def get_mac_str(valve_index, port_num):
     """Gets the mac address string for the valve/port combo
@@ -74,8 +73,7 @@ class FaucetDot1x:  # pylint: disable=too-many-instance-attributes
             dot1x_intf, self.logger,
             self.auth_handler, self.failure_handler, self.logoff_handler,
             radius_ip, radius_port, radius_secret, chewie_id)
-        self.thread = hub.spawn(_chewie.run)
-        self.thread.name = 'chewie'
+        zof.ensure_future(_chewie.run())
         return _chewie
 
     def _get_valve_and_port(self, port_id):

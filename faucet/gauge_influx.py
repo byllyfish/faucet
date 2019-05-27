@@ -20,6 +20,7 @@ from influxdb import InfluxDBClient
 from influxdb.exceptions import InfluxDBClientError, InfluxDBServerError
 import requests # pytype: disable=pyi-error
 from faucet.gauge_pollers import GaugePortStatePoller, GaugeFlowTablePoller, GaugePortStatsPoller
+from faucet.valve_of import ofp
 
 
 class InfluxShipper:
@@ -108,8 +109,8 @@ Example:
 
     def update(self, rcv_time, dp_id, msg):
         super(GaugePortStateInfluxDBLogger, self).update(rcv_time, dp_id, msg)
-        reason = msg.reason
-        port_no = msg.desc.port_no
+        reason = ofp.port_reason(msg['reason'])
+        port_no = msg['port_no']
         if port_no in self.dp.ports:
             port_name = self.dp.ports[port_no].name
             points = [
@@ -159,8 +160,8 @@ Example:
     def update(self, rcv_time, dp_id, msg):
         super(GaugePortStatsInfluxDBLogger, self).update(rcv_time, dp_id, msg)
         points = []
-        for stat in msg.body:
-            port_name = str(stat.port_no)
+        for stat in msg:
+            port_name = str(stat['port_no'])
             for stat_name, stat_val in self._format_port_stats('_', stat):
                 points.append(
                     self.make_port_point(
@@ -201,9 +202,7 @@ Example:
     def update(self, rcv_time, dp_id, msg):
         super(GaugeFlowTableInfluxDBLogger, self).update(rcv_time, dp_id, msg)
         points = []
-        jsondict = msg.to_jsondict()
-        for stats_reply in jsondict['OFPFlowStatsReply']['body']:
-            stats = stats_reply['OFPFlowStats']
+        for stats in msg:
             for var, tags, count in self._parse_flow_stats(stats):
                 points.append(self.make_point(tags, rcv_time, var, count))
         self.ship_points(points)

@@ -18,9 +18,7 @@
 
 import time
 
-from ryu.controller.handler import MAIN_DISPATCHER
-from ryu.controller.handler import set_ev_cls
-from ryu.controller import ofp_event
+import zof
 
 from faucet import valve_of
 from faucet.conf import InvalidConfigError
@@ -28,12 +26,13 @@ from faucet.config_parser import watcher_parser
 from faucet.gauge_pollers import GaugePortStatePoller
 from faucet.gauge_prom import GaugePrometheusClient
 from faucet.valves_manager import ConfigWatcher
-from faucet.valve_of import ofp, parser
-from faucet.valve_ryuapp import EventReconfigure, RyuAppBase
+from faucet.valve_ryuapp import RyuAppBase
 from faucet.valve_util import dpid_log, kill_on_exception
 from faucet.watcher import watcher_factory
 
+APP = zof.Application('gauge')
 
+@APP.bind()
 class Gauge(RyuAppBase):
     """Ryu app for polling Faucet controlled datapaths for stats/state.
 
@@ -108,12 +107,12 @@ class Gauge(RyuAppBase):
             return
         if name in watchers:
             for watcher in watchers[name]:
-                watcher.update(ryu_event.timestamp, ryu_dp.id, msg)
+                watcher.update(float(ryu_event['time']), ryu_dp.id, msg)
 
     def _config_files_changed(self):
         return self.config_watcher.files_changed()
 
-    @set_ev_cls(EventReconfigure, MAIN_DISPATCHER)
+    @APP.event('RECONFIGURE')
     def reload_config(self, ryu_event):
         """Handle request for Gauge config reload."""
         super(Gauge, self).reload_config(ryu_event)
@@ -127,8 +126,13 @@ class Gauge(RyuAppBase):
                 watcher.report_dp_status(1)
                 if isinstance(watcher, GaugePortStatePoller):
                     for port in ryu_dp.ports.values():
-                        msg = parser.OFPPortStatus(
-                            ryu_dp, desc=port, reason=ofp.OFPPR_ADD)
+                        msg = {
+                            'port_no': port.port_no,
+                            'reason': 'ADD',
+                            'state': port.state, 
+                            'curr_speed': port.curr_speed, 
+                            'max_speed': port.max_speed
+                        }
                         watcher.update(timestamp, ryu_dp.id, msg)
                 watcher.start(ryu_dp, is_active)
 
@@ -169,14 +173,14 @@ class Gauge(RyuAppBase):
         self._stop_watchers(watchers)
 
     _WATCHER_HANDLERS = {
-        ofp_event.EventOFPPortStatus: 'port_state', # pylint: disable=no-member
-        ofp_event.EventOFPPortStatsReply: 'port_stats', # pylint: disable=no-member
-        ofp_event.EventOFPFlowStatsReply: 'flow_table', # pylint: disable=no-member
+        'PORT_STATUS': 'port_state',
+        'PORT_STATS_REPLY': 'port_stats',
+        'FLOW_DESC_REPLY': 'flow_table',
     }
 
-    @set_ev_cls(ofp_event.EventOFPPortStatus, MAIN_DISPATCHER) # pylint: disable=no-member
-    @set_ev_cls(ofp_event.EventOFPPortStatsReply, MAIN_DISPATCHER) # pylint: disable=no-member
-    @set_ev_cls(ofp_event.EventOFPFlowStatsReply, MAIN_DISPATCHER) # pylint: disable=no-member
+    @APP.message('PORT_STATUS')
+    @APP.message('PORT_STATS_REPLY')
+    @APP.message('FLOW_DESC_REPLY')
     @kill_on_exception(exc_logname)
     def update_watcher_handler(self, ryu_event):
         """Handle port status change event.
@@ -184,4 +188,10 @@ class Gauge(RyuAppBase):
         Args:
            ryu_event (ryu.controller.event.EventReplyBase): port status change event.
         """
-        self._update_watcher(self._WATCHER_HANDLERS[type(ryu_event)], ryu_event)
+        self._update_watcher(self._WATCHER_HANDLERS[ryu_event['type']], ryu_event)
+
+    # Add zof handlers for base class.
+    APP.event('START')(RyuAppBase.start)
+    APP.message('CHANNEL_UP')(RyuAppBase.connect_or_disconnect_handler)
+    APP.message('CHANNEL_DOWN')(RyuAppBase.connect_or_disconnect_handler)
+    APP.event('SIGNAL')(RyuAppBase.signal_handler)

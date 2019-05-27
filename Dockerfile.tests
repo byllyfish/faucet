@@ -5,4 +5,8 @@ FROM faucet/test-base:latest
 COPY ./ /faucet-src/
 WORKDIR /faucet-src/
 
+RUN add-apt-repository ppa:byllyfish/oftr && \
+    apt-get update && \
+    apt-get install oftr
+
 CMD ["docker/runtests.sh"]

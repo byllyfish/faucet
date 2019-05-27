@@ -20,16 +20,11 @@
 import ipaddress
 import random
 
-from ryu.lib import mac
-from ryu.lib import ofctl_v1_3 as ofctl
-from ryu.lib.ofctl_utils import (
-    str_to_int, to_match_ip, to_match_masked_int, to_match_eth, to_match_vid, OFCtlUtil)
-from ryu.ofproto import ether
-from ryu.ofproto import inet
-from ryu.ofproto import ofproto_v1_3 as ofp
-from ryu.ofproto import ofproto_v1_3_parser as parser
+from zof.pktview import pktview_to_list, pktview_from_ofctl, PktView
+from zof.ofctl import MATCH_FIELDS
 
 from faucet.conf import test_config_condition, InvalidConfigError
+from faucet.zof_constant import ofp, ether, mac, inet
 from faucet.valve_of_old import OLD_MATCH_FIELDS
 
 MIN_VID = 1
@@ -41,135 +36,6 @@ OFP_IN_PORT = ofp.OFPP_IN_PORT
 MAX_PACKET_IN_BYTES = 160 # largest packet is icmp6 echo.
 ECTP_ETH_TYPE = 0x9000
 
-OFERROR_TYPE_CODE = {
-    0: ('OFPET_HELLO_FAILED', {
-        ofp.OFPHFC_INCOMPATIBLE: 'OFPHFC_INCOMPATIBLE',
-        ofp.OFPHFC_EPERM: 'OFPHFC_EPERM'}),
-    1: ('OFPET_BAD_REQUEST', {
-        ofp.OFPBRC_BAD_VERSION: 'OFPBRC_BAD_VERSION',
-        ofp.OFPBRC_BAD_TYPE: 'OFPBRC_BAD_TYPE',
-        ofp.OFPBRC_BAD_MULTIPART: 'OFPBRC_BAD_MULTIPART',
-        ofp.OFPBRC_BAD_EXPERIMENTER: 'OFPBRC_BAD_EXPERIMENTER',
-        ofp.OFPBRC_BAD_EXP_TYPE: 'OFPBRC_BAD_EXP_TYPE',
-        ofp.OFPBRC_EPERM: 'OFPBRC_EPERM',
-        ofp.OFPBRC_BAD_LEN: 'OFPBRC_BAD_LEN',
-        ofp.OFPBRC_BUFFER_EMPTY: 'OFPBRC_BUFFER_EMPTY',
-        ofp.OFPBRC_BUFFER_UNKNOWN: 'OFPBRC_BUFFER_UNKNOWN',
-        ofp.OFPBRC_BAD_TABLE_ID: 'OFPBRC_BAD_TABLE_ID',
-        ofp.OFPBRC_IS_SLAVE: 'OFPBRC_IS_SLAVE',
-        ofp.OFPBRC_BAD_PORT: 'OFPBRC_BAD_PORT',
-        ofp.OFPBRC_BAD_PACKET: 'OFPBRC_BAD_PACKET',
-        ofp.OFPBRC_MULTIPART_BUFFER_OVERFLOW: 'OFPBRC_MULTIPART_BUFFER_OVERFLOW'}),
-    2: ('OFPET_BAD_ACTION', {
-        ofp.OFPBAC_BAD_TYPE: 'OFPBAC_BAD_TYPE',
-        ofp.OFPBAC_BAD_LEN: 'OFPBAC_BAD_LEN',
-        ofp.OFPBAC_BAD_EXPERIMENTER: 'OFPBAC_BAD_EXPERIMENTER',
-        ofp.OFPBAC_BAD_EXP_TYPE: 'OFPBAC_BAD_EXP_TYPE',
-        ofp.OFPBAC_BAD_OUT_PORT: 'OFPBAC_BAD_OUT_PORT',
-        ofp.OFPBAC_BAD_ARGUMENT: 'OFPBAC_BAD_ARGUMENT',
-        ofp.OFPBAC_EPERM: 'OFPBAC_EPERM',
-        ofp.OFPBAC_TOO_MANY: 'OFPBAC_TOO_MANY',
-        ofp.OFPBAC_BAD_QUEUE: 'OFPBAC_BAD_QUEUE',
-        ofp.OFPBAC_BAD_OUT_GROUP: 'OFPBAC_BAD_OUT_GROUP',
-        ofp.OFPBAC_MATCH_INCONSISTENT: 'OFPBAC_MATCH_INCONSISTENT',
-        ofp.OFPBAC_UNSUPPORTED_ORDER: 'OFPBAC_UNSUPPORTED_ORDER',
-        ofp.OFPBAC_BAD_TAG: 'OFPBAC_BAD_TAG',
-        ofp.OFPBAC_BAD_SET_TYPE: 'OFPBAC_BAD_SET_TYPE',
-        ofp.OFPBAC_BAD_SET_LEN: 'OFPBAC_BAD_SET_LEN',
-        ofp.OFPBAC_BAD_SET_ARGUMENT: 'OFPBAC_BAD_SET_ARGUMENT'}),
-    3: ('OFPET_BAD_INSTRUCTION', {
-        ofp.OFPBIC_UNKNOWN_INST: 'OFPBIC_UNKNOWN_INST',
-        ofp.OFPBIC_UNSUP_INST: 'OFPBIC_UNSUP_INST',
-        ofp.OFPBIC_BAD_TABLE_ID: 'OFPBIC_BAD_TABLE_ID',
-        ofp.OFPBIC_UNSUP_METADATA: 'OFPBIC_UNSUP_METADATA',
-        ofp.OFPBIC_UNSUP_METADATA_MASK: 'OFPBIC_UNSUP_METADATA_MASK',
-        ofp.OFPBIC_BAD_EXPERIMENTER: 'OFPBIC_BAD_EXPERIMENTER',
-        ofp.OFPBIC_BAD_EXP_TYPE: 'OFPBIC_BAD_EXP_TYPE',
-        ofp.OFPBIC_BAD_LEN: 'OFPBIC_BAD_LEN',
-        ofp.OFPBIC_EPERM: 'OFPBIC_EPERM'}),
-    4: ('OFPET_BAD_MATCH', {
-        ofp.OFPBMC_BAD_TYPE: 'OFPBMC_BAD_TYPE',
-        ofp.OFPBMC_BAD_LEN: 'OFPBMC_BAD_LEN',
-        ofp.OFPBMC_BAD_TAG: 'OFPBMC_BAD_TAG',
-        ofp.OFPBMC_BAD_DL_ADDR_MASK: 'OFPBMC_BAD_DL_ADDR_MASK',
-        ofp.OFPBMC_BAD_NW_ADDR_MASK: 'OFPBMC_BAD_NW_ADDR_MASK',
-        ofp.OFPBMC_BAD_WILDCARDS: 'OFPBMC_BAD_WILDCARDS',
-        ofp.OFPBMC_BAD_FIELD: 'OFPBMC_BAD_FIELD',
-        ofp.OFPBMC_BAD_VALUE: 'OFPBMC_BAD_VALUE',
-        ofp.OFPBMC_BAD_MASK: 'OFPBMC_BAD_MASK',
-        ofp.OFPBMC_BAD_PREREQ: 'OFPBMC_BAD_PREREQ',
-        ofp.OFPBMC_DUP_FIELD: 'OFPBMC_DUP_FIELD',
-        ofp.OFPBMC_EPERM: 'OFPBMC_EPERM'}),
-    5: ('OFPET_FLOW_MOD_FAILED', {
-        ofp.OFPFMFC_UNKNOWN: 'OFPFMFC_UNKNOWN',
-        ofp.OFPFMFC_TABLE_FULL: 'OFPFMFC_TABLE_FULL',
-        ofp.OFPFMFC_BAD_TABLE_ID: 'OFPFMFC_BAD_TABLE_ID',
-        ofp.OFPFMFC_OVERLAP: 'OFPFMFC_OVERLAP',
-        ofp.OFPFMFC_EPERM: 'OFPFMFC_EPERM',
-        ofp.OFPFMFC_BAD_TIMEOUT: 'OFPFMFC_BAD_TIMEOUT',
-        ofp.OFPFMFC_BAD_COMMAND: 'OFPFMFC_BAD_COMMAND',
-        ofp.OFPFMFC_BAD_FLAGS: 'OFPFMFC_BAD_FLAGS'}),
-    6: ('OFPET_GROUP_MOD_FAILED', {
-        ofp.OFPGMFC_GROUP_EXISTS: 'OFPGMFC_GROUP_EXISTS',
-        ofp.OFPGMFC_INVALID_GROUP: 'OFPGMFC_INVALID_GROUP',
-        ofp.OFPGMFC_WEIGHT_UNSUPPORTED: 'OFPGMFC_WEIGHT_UNSUPPORTED',
-        ofp.OFPGMFC_OUT_OF_GROUPS: 'OFPGMFC_OUT_OF_GROUPS',
-        ofp.OFPGMFC_OUT_OF_BUCKETS: 'OFPGMFC_OUT_OF_BUCKETS',
-        ofp.OFPGMFC_CHAINING_UNSUPPORTED: 'OFPGMFC_CHAINING_UNSUPPORTED',
-        ofp.OFPGMFC_WATCH_UNSUPPORTED: 'OFPGMFC_WATCH_UNSUPPORTED',
-        ofp.OFPGMFC_LOOP: 'OFPGMFC_LOOP',
-        ofp.OFPGMFC_UNKNOWN_GROUP: 'OFPGMFC_UNKNOWN_GROUP',
-        ofp.OFPGMFC_CHAINED_GROUP: 'OFPGMFC_CHAINED_GROUP',
-        ofp.OFPGMFC_BAD_TYPE: 'OFPGMFC_BAD_TYPE',
-        ofp.OFPGMFC_BAD_COMMAND: 'OFPGMFC_BAD_COMMAND',
-        ofp.OFPGMFC_BAD_BUCKET: 'OFPGMFC_BAD_BUCKET',
-        ofp.OFPGMFC_BAD_WATCH: 'OFPGMFC_BAD_WATCH',
-        ofp.OFPGMFC_EPERM: 'OFPGMFC_EPERM'}),
-    7: ('OFPET_PORT_MOD_FAILED', {
-        ofp.OFPPMFC_BAD_PORT: 'OFPPMFC_BAD_PORT',
-        ofp.OFPPMFC_BAD_HW_ADDR: 'OFPPMFC_BAD_HW_ADDR',
-        ofp.OFPPMFC_BAD_CONFIG: 'OFPPMFC_BAD_CONFIG',
-        ofp.OFPPMFC_BAD_ADVERTISE: 'OFPPMFC_BAD_ADVERTISE',
-        ofp.OFPPMFC_EPERM: 'OFPPMFC_EPERM'}),
-    8: ('OFPET_TABLE_MOD_FAILED', {
-        ofp.OFPTMFC_BAD_TABLE: 'OFPTMFC_BAD_TABLE',
-        ofp.OFPTMFC_BAD_CONFIG: 'OFPTMFC_BAD_CONFIG',
-        ofp.OFPTMFC_EPERM: 'OFPTMFC_EPERM'}),
-    9: ('OFPET_QUEUE_OP_FAILED', {
-        ofp.OFPQOFC_BAD_PORT: 'OFPQOFC_BAD_PORT',
-        ofp.OFPQOFC_BAD_QUEUE: 'OFPQOFC_BAD_QUEUE',
-        ofp.OFPQOFC_EPERM: 'OFPQOFC_EPERM'}),
-    10: ('OFPET_SWITCH_CONFIG_FAILED', {
-        ofp.OFPSCFC_BAD_FLAGS: 'OFPSCFC_BAD_FLAGS',
-        ofp.OFPSCFC_BAD_LEN: 'OFPSCFC_BAD_LEN',
-        ofp.OFPSCFC_EPERM: 'OFPSCFC_EPERM'}),
-    11: ('OFPET_ROLE_REQUEST_FAILED', {
-        ofp.OFPRRFC_STALE: 'OFPRRFC_STALE',
-        ofp.OFPRRFC_UNSUP: 'OFPRRFC_UNSUP',
-        ofp.OFPRRFC_BAD_ROLE: 'OFPRRFC_BAD_ROLE'}),
-    12: ('OFPET_METER_MOD_FAILED', {
-        ofp.OFPMMFC_UNKNOWN: 'OFPMMFC_UNKNOWN',
-        ofp.OFPMMFC_METER_EXISTS: 'OFPMMFC_METER_EXISTS',
-        ofp.OFPMMFC_INVALID_METER: 'OFPMMFC_INVALID_METER',
-        ofp.OFPMMFC_UNKNOWN_METER: 'OFPMMFC_UNKNOWN_METER',
-        ofp.OFPMMFC_BAD_COMMAND: 'OFPMMFC_BAD_COMMAND',
-        ofp.OFPMMFC_BAD_FLAGS: 'OFPMMFC_BAD_FLAGS',
-        ofp.OFPMMFC_BAD_RATE: 'OFPMMFC_BAD_RATE',
-        ofp.OFPMMFC_BAD_BURST: 'OFPMMFC_BAD_BURST',
-        ofp.OFPMMFC_BAD_BAND: 'OFPMMFC_BAD_BAND',
-        ofp.OFPMMFC_BAD_BAND_VALUE: 'OFPMMFC_BAD_BAND_VALUE',
-        ofp.OFPMMFC_OUT_OF_METERS: 'OFPMMFC_OUT_OF_METERS',
-        ofp.OFPMMFC_OUT_OF_BANDS: 'OFPMMFC_OUT_OF_BANDS'}),
-    13: ('OFPET_TABLE_FEATURES_FAILED', {
-        ofp.OFPTFFC_BAD_TABLE: 'OFPTFFC_BAD_TABLE',
-        ofp.OFPTFFC_BAD_METADATA: 'OFPTFFC_BAD_METADATA',
-        ofp.OFPTFFC_BAD_TYPE: 'OFPTFFC_BAD_TYPE',
-        ofp.OFPTFFC_BAD_LEN: 'OFPTFFC_BAD_LEN',
-        ofp.OFPTFFC_BAD_ARGUMENT: 'OFPTFFC_BAD_ARGUMENT',
-        ofp.OFPTFFC_EPERM: 'OFPTFFC_EPERM'}),
-    65535: ('OFPET_EXPERIMENTER', {}),
-}
-
 
 def ignore_port(port_num):
     """Return True if FAUCET should ignore this port.
@@ -180,15 +46,16 @@ def ignore_port(port_num):
         bool: True if FAUCET should ignore this port.
     """
     # special case OFPP_LOCAL to allow FAUCET to manage switch admin interface.
-    if port_num == ofp.OFPP_LOCAL:
+    if port_num == 'LOCAL' or port_num == ofp.OFPP_LOCAL:
         return False
     # 0xF0000000 and up are not physical ports.
-    return port_num > 0xF0000000
+    return isinstance(port_num, str) or port_num > 0xF0000000
 
 
 def port_status_from_state(state):
     """Return True if OFPPS_LINK_DOWN is not set."""
-    return not state & ofp.OFPPS_LINK_DOWN
+    assert isinstance(state, (list, tuple)), repr(state)
+    return 'LINK_DOWN' not in state
 
 
 def is_table_features_req(ofmsg):
@@ -199,7 +66,8 @@ def is_table_features_req(ofmsg):
     Returns:
         bool: True if is a TFM req.
     """
-    return isinstance(ofmsg, parser.OFPTableFeaturesStatsRequest)
+    assert isinstance(ofmsg, dict), repr(ofmsg)
+    return ofmsg['type'] == 'TABLE_FEATURES_REQUEST'
 
 
 def is_flowmod(ofmsg):
@@ -210,7 +78,8 @@ def is_flowmod(ofmsg):
     Returns:
         bool: True if is a FlowMod
     """
-    return isinstance(ofmsg, parser.OFPFlowMod)
+    assert isinstance(ofmsg, dict), repr(ofmsg)
+    return ofmsg['type'] == 'FLOW_MOD'
 
 
 def is_groupmod(ofmsg):
@@ -221,7 +90,8 @@ def is_groupmod(ofmsg):
     Returns:
         bool: True if is a GroupMod
     """
-    return isinstance(ofmsg, parser.OFPGroupMod)
+    assert isinstance(ofmsg, dict), repr(ofmsg)
+    return ofmsg['type'] == 'GROUP_MOD'
 
 
 def is_metermod(ofmsg):
@@ -232,7 +102,8 @@ def is_metermod(ofmsg):
     Returns:
         bool: True if is a MeterMod
     """
-    return isinstance(ofmsg, parser.OFPMeterMod)
+    assert isinstance(ofmsg, dict), repr(ofmsg)
+    return ofmsg['type'] == 'METER_MOD'
 
 
 def is_packetout(ofmsg):
@@ -243,7 +114,8 @@ def is_packetout(ofmsg):
     Returns:
         bool: True if is a PacketOut
     """
-    return isinstance(ofmsg, parser.OFPPacketOut)
+    assert isinstance(ofmsg, dict), repr(ofmsg)
+    return ofmsg['type'] == 'PACKET_OUT'
 
 def is_output(ofmsg):
     """Return True if flow message is an action output message.
@@ -253,7 +125,8 @@ def is_output(ofmsg):
     Returns:
         bool: True if is a OFPActionOutput.
     """
-    return isinstance(ofmsg, parser.OFPActionOutput)
+    assert isinstance(ofmsg, dict), repr(ofmsg)
+    return ofmsg['action'] == 'OUTPUT'
 
 def is_flowdel(ofmsg):
     """Return True if flow message is a FlowMod and a delete.
@@ -263,11 +136,7 @@ def is_flowdel(ofmsg):
     Returns:
         bool: True if is a FlowMod delete/strict.
     """
-    if (is_flowmod(ofmsg) and
-            (ofmsg.command == ofp.OFPFC_DELETE or
-             ofmsg.command == ofp.OFPFC_DELETE_STRICT)):
-        return True
-    return False
+    return is_flowmod(ofmsg) and ofmsg['msg']['command'] in ('DELETE', 'DELETE_STRICT')
 
 def is_groupdel(ofmsg):
     """Return True if OF message is a GroupMod and command is delete.
@@ -277,10 +146,7 @@ def is_groupdel(ofmsg):
     Returns:
         bool: True if is a GroupMod delete
     """
-    if (is_groupmod(ofmsg) and
-            (ofmsg.command == ofp.OFPGC_DELETE)):
-        return True
-    return False
+    return is_groupmod(ofmsg) and ofmsg['msg']['command'] == 'DELETE'
 
 def is_meterdel(ofmsg):
     """Return True if OF message is a MeterMod and command is delete.
@@ -290,10 +156,7 @@ def is_meterdel(ofmsg):
     Returns:
         bool: True if is a MeterMod delete
     """
-    if (is_metermod(ofmsg) and
-            (ofmsg.command == ofp.OFPMC_DELETE)):
-        return True
-    return False
+    return is_metermod(ofmsg) and ofmsg['msg']['command'] == 'DELETE'
 
 
 def is_groupadd(ofmsg):
@@ -304,10 +167,7 @@ def is_groupadd(ofmsg):
     Returns:
         bool: True if is a GroupMod add
     """
-    if (is_groupmod(ofmsg) and
-            (ofmsg.command == ofp.OFPGC_ADD)):
-        return True
-    return False
+    return is_groupmod(ofmsg) and ofmsg['msg']['command'] == 'ADD'
 
 
 def is_meteradd(ofmsg):
@@ -318,10 +178,7 @@ def is_meteradd(ofmsg):
     Returns:
         bool: True if is a MeterMod add
     """
-    if (is_metermod(ofmsg) and
-            (ofmsg.command == ofp.OFPMC_ADD)):
-        return True
-    return False
+    return is_metermod(ofmsg) and ofmsg['msg']['command'] == 'ADD'
 
 
 def is_apply_actions(instruction):
@@ -332,8 +189,7 @@ def is_apply_actions(instruction):
     Returns:
         bool: True if an apply action.
     """
-    return (isinstance(instruction, parser.OFPInstructionActions) and
-            instruction.type == ofp.OFPIT_APPLY_ACTIONS)
+    return instruction['instruction'] == 'APPLY_ACTIONS'
 
 
 def is_meter(instruction):
@@ -344,16 +200,16 @@ def is_meter(instruction):
     Returns:
         bool: True if a meter.
     """
-    return isinstance(instruction, parser.OFPInstructionMeter)
+    return instruction['instruction'] == 'METER'
 
 
 def is_set_field(action):
-    return isinstance(action, parser.OFPActionSetField)
+    return action['action'] == 'SET_FIELD'
 
 
 def apply_meter(meter_id):
     """Return instruction to apply a meter."""
-    return parser.OFPInstructionMeter(meter_id, ofp.OFPIT_METER)
+    return {'instruction': 'METER', 'meter_id': meter_id}
 
 
 def apply_actions(actions):
@@ -364,7 +220,7 @@ def apply_actions(actions):
     Returns:
         ryu.ofproto.ofproto_v1_3_parser.OFPInstruction: instruction of actions.
     """
-    return parser.OFPInstructionActions(ofp.OFPIT_APPLY_ACTIONS, actions)
+    return {'instruction': 'APPLY_ACTIONS', 'actions': actions}
 
 
 def goto_table(table):
@@ -375,7 +231,7 @@ def goto_table(table):
     Returns:
         ryu.ofproto.ofproto_v1_3_parser.OFPInstruction: goto instruction.
     """
-    return parser.OFPInstructionGotoTable(table.table_id)
+    return {'instruction': 'GOTO_TABLE', 'table_id': table.table_id}
 
 def metadata_goto_table(metadata, mask, table):
     """Return instructions to write metadata and goto table.
@@ -387,8 +243,8 @@ def metadata_goto_table(metadata, mask, table):
     Returns:
         list of OFPInstructions"""
     return [
-        parser.OFPInstructionWriteMetadata(metadata, mask),
-        parser.OFPInstructionGotoTable(table.table_id)
+        {'instruction': 'WRITE_METADATA', 'metadata': metadata, 'mask': mask},
+        goto_table(table)
         ]
 
 def set_field(**kwds):
@@ -399,7 +255,10 @@ def set_field(**kwds):
     Returns:
         ryu.ofproto.ofproto_v1_3_parser.OFPActionSetField: set field action.
     """
-    return parser.OFPActionSetField(**kwds)
+    assert len(kwds) == 1
+    field, value = list(kwds.items())[0]
+    test_config_condition(field not in MATCH_FIELDS, 'Unknown field name')
+    return {'action':'SET_FIELD', 'field': field.upper(), 'value': value}
 
 
 def vid_present(vid):
@@ -433,7 +292,7 @@ def push_vlan_act(table, vlan_vid, eth_type=ether.ETH_TYPE_8021Q):
         list: actions to push 802.1Q header with VLAN VID set.
     """
     return [
-        parser.OFPActionPushVlan(eth_type),
+        {'action':'PUSH_VLAN', 'ethertype':eth_type},
         table.set_vlan_vid(vlan_vid),
     ]
 
@@ -444,7 +303,7 @@ def dec_ip_ttl():
     Returns:
         ryu.ofproto.ofproto_v1_3_parser.OFPActionDecNwTtl: decrement IP TTL.
     """
-    return parser.OFPActionDecNwTtl()
+    return {'action':'DEC_NW_TTL'}
 
 
 def pop_vlan():
@@ -453,7 +312,7 @@ def pop_vlan():
     Returns:
         ryu.ofproto.ofproto_v1_3_parser.OFPActionPopVlan: Pop VLAN.
     """
-    return parser.OFPActionPopVlan()
+    return {'action':'POP_VLAN'}
 
 
 def output_port(port_num, max_len=0):
@@ -465,7 +324,7 @@ def output_port(port_num, max_len=0):
     Returns:
         ryu.ofproto.ofproto_v1_3_parser.OFPActionOutput: output to port action.
     """
-    return parser.OFPActionOutput(port_num, max_len=max_len)
+    return {'action':'OUTPUT', 'port_no':port_num, 'max_len':max_len}
 
 
 def dedupe_output_port_acts(output_port_acts):
@@ -476,8 +335,8 @@ def dedupe_output_port_acts(output_port_acts):
     Returns:
         list of ryu.ofproto.ofproto_v1_3_parser.OFPActionOutput: output to port actions.
     """
-    output_ports = {output_port_act.port for output_port_act in output_port_acts}
-    return [output_port(port) for port in sorted(output_ports)]
+    output_ports = {output_port_act['port_no'] for output_port_act in output_port_acts}
+    return [output_port(port) for port in sorted(output_ports, key=str)]
 
 
 def output_in_port():
@@ -497,7 +356,7 @@ def output_controller(max_len=MAX_PACKET_IN_BYTES):
     Returns:
         ryu.ofproto.ofproto_v1_3_parser.OFPActionOutput: packet in action.
     """
-    return output_port(ofp.OFPP_CONTROLLER, max_len)
+    return output_port('CONTROLLER', max_len)
 
 def packetouts(port_nums, data):
     """Return OpenFlow action to mulltiply packet out to dataplane from controller.
@@ -509,12 +368,16 @@ def packetouts(port_nums, data):
         ryu.ofproto.ofproto_v1_3_parser.OFPActionOutput: packet out action.
     """
     random.shuffle(port_nums)
-    return parser.OFPPacketOut(
-        datapath=None,
-        buffer_id=ofp.OFP_NO_BUFFER,
-        in_port=ofp.OFPP_CONTROLLER,
-        actions=[output_port(port_num) for port_num in port_nums],
-        data=data)
+    return {
+        'type': 'PACKET_OUT',
+        'msg': {
+            'buffer_id': 'NO_BUFFER',
+            'in_port': 'CONTROLLER',
+            'actions': [output_port(port_num) for port_num in port_nums],
+            'data': b'',
+            'pkt': data
+        }
+    }
 
 
 def packetout(port_num, data):
@@ -535,12 +398,11 @@ def barrier():
     Returns:
         ryu.ofproto.ofproto_v1_3_parser.OFPBarrierRequest: barrier request.
     """
-    return parser.OFPBarrierRequest(None)
+    return {'type': 'BARRIER_REQUEST'}
 
 
 def table_features(body):
-    return parser.OFPTableFeaturesStatsRequest(
-        datapath=None, body=body)
+    return {'type':'TABLE_FEATURES_REQUEST', 'msg':body}
 
 
 def match(match_fields):
@@ -551,74 +413,14 @@ def match(match_fields):
     Returns:
         ryu.ofproto.ofproto_v1_3_parser.OFPMatch: matches.
     """
-    return parser.OFPMatch(**match_fields)
-
-
-def valve_match_vid(value):
-    return to_match_vid(value, ofp.OFPVID_PRESENT)
-
-
-# See 7.2.3.7 Flow Match Fields (OF 1.3.5)
-MATCH_FIELDS = {
-    'in_port': OFCtlUtil(ofp).ofp_port_from_user,
-    'in_phy_port': str_to_int,
-    'metadata': to_match_masked_int,
-    'eth_dst': to_match_eth,
-    'eth_src': to_match_eth,
-    'eth_type': str_to_int,
-    'vlan_vid': valve_match_vid,
-    'vlan_pcp': str_to_int,
-    'ip_dscp': str_to_int,
-    'ip_ecn': str_to_int,
-    'ip_proto': str_to_int,
-    'ipv4_src': to_match_ip,
-    'ipv4_dst': to_match_ip,
-    'tcp_src': to_match_masked_int,
-    'tcp_dst': to_match_masked_int,
-    'udp_src': to_match_masked_int,
-    'udp_dst': to_match_masked_int,
-    'sctp_src': to_match_masked_int,
-    'sctp_dst': to_match_masked_int,
-    'icmpv4_type': str_to_int,
-    'icmpv4_code': str_to_int,
-    'arp_op': str_to_int,
-    'arp_spa': to_match_ip,
-    'arp_tpa': to_match_ip,
-    'arp_sha': to_match_eth,
-    'arp_tha': to_match_eth,
-    'ipv6_src': to_match_ip,
-    'ipv6_dst': to_match_ip,
-    'ipv6_flabel': str_to_int,
-    'icmpv6_type': str_to_int,
-    'icmpv6_code': str_to_int,
-    'ipv6_nd_target': to_match_ip,
-    'ipv6_nd_sll': to_match_eth,
-    'ipv6_nd_tll': to_match_eth,
-    'mpls_label': str_to_int,
-    'mpls_tc': str_to_int,
-    'mpls_bos': str_to_int,
-    'pbb_isid': to_match_masked_int,
-    'tunnel_id': to_match_masked_int,
-    'ipv6_exthdr': to_match_masked_int
-}
+    return pktview_to_list(match_fields)
 
 
 def match_from_dict(match_dict):
-    for old_match, new_match in OLD_MATCH_FIELDS.items():
-        if old_match in match_dict:
-            match_dict[new_match] = match_dict[old_match]
-            del match_dict[old_match]
-
-    kwargs = {}
-    for of_match, field in match_dict.items():
-        test_config_condition(of_match not in MATCH_FIELDS, 'Unknown match field: %s' % of_match)
-        try:
-            encoded_field = MATCH_FIELDS[of_match](field)
-        except TypeError:
-            raise InvalidConfigError('%s cannot be type %s' % (of_match, type(field)))
-        kwargs[of_match] = encoded_field
-
-    return parser.OFPMatch(**kwargs)
+    try:
+        return pktview_to_list(pktview_from_ofctl(match_dict, validate=True))
+    except ValueError as ex:
+        raise InvalidConfigError(str(ex))
 
 
 def _match_ip_masked(ipa):
@@ -682,34 +484,39 @@ def build_match_dict(in_port=None, vlan=None, eth_type=None, eth_src=None,
 
 def flowmod(cookie, command, table_id, priority, out_port, out_group,
             match_fields, inst, hard_timeout, idle_timeout, flags=0):
-    return parser.OFPFlowMod(
-        datapath=None,
-        cookie=cookie,
-        command=command,
-        table_id=table_id,
-        priority=priority,
-        out_port=out_port,
-        out_group=out_group,
-        match=match_fields,
-        instructions=inst,
-        hard_timeout=hard_timeout,
-        idle_timeout=idle_timeout,
-        flags=flags)
+    """Return a FlowMod message."""
+    return {
+        'type': 'FLOW_MOD',
+        'msg': {
+            'cookie': cookie,
+            'command': command,
+            'table_id': table_id,
+            'priority': priority,
+            'out_port': out_port,
+            'out_group': out_group,
+            'match': match_fields,
+            'instructions': inst,
+            'hard_timeout': int(hard_timeout or 0),
+            'idle_timeout': int(idle_timeout or 0),
+            'flags': [flags]
+        }
+    }
 
 
 def group_act(group_id):
     """Return an action to run a group."""
-    return parser.OFPActionGroup(group_id)
+    return {'action':'GROUP', 'group_id': group_id}
 
 
 def bucket(weight=0, watch_port=ofp.OFPP_ANY,
            watch_group=ofp.OFPG_ANY, actions=None):
     """Return a group action bucket with provided actions."""
-    return parser.OFPBucket(
-        weight=weight,
-        watch_port=watch_port,
-        watch_group=watch_group,
-        actions=actions)
+    return {
+        'weight': weight,
+        'watch_port': watch_port,
+        'watch_group': watch_group,
+        'actions': actions
+    }
 
 
 def build_group_flood_buckets(vlan_flood_acts):
@@ -726,125 +533,142 @@ def build_group_flood_buckets(vlan_flood_acts):
 
 def groupmod(datapath=None, type_=ofp.OFPGT_ALL, group_id=0, buckets=None):
     """Modify a group."""
-    return parser.OFPGroupMod(
-        datapath,
-        ofp.OFPGC_MODIFY,
-        type_,
-        group_id,
-        buckets)
+    assert datapath is None
+    return {
+        'type': 'GROUP_MOD',
+        'msg': {
+            'command': ofp.OFPGC_MODIFY,
+            'type': type_,
+            'group_id': group_id,
+            'buckets': buckets
+        }
+    }
 
 
 def groupmod_ff(datapath=None, group_id=0, buckets=None):
     """Modify a fast failover group."""
+    assert datapath is None
     return groupmod(datapath, type_=ofp.OFPGT_FF, group_id=group_id, buckets=buckets)
 
 
 def groupadd(datapath=None, type_=ofp.OFPGT_ALL, group_id=0, buckets=None):
     """Add a group."""
-    return parser.OFPGroupMod(
-        datapath,
-        ofp.OFPGC_ADD,
-        type_,
-        group_id,
-        buckets)
+    assert datapath is None
+    return {
+        'type': 'GROUP_MOD',
+        'msg': {
+            'command': ofp.OFPGC_ADD,
+            'type': type_,
+            'group_id': group_id,
+            'buckets': buckets
+        }
+    }
 
 
 def groupadd_ff(datapath=None, group_id=0, buckets=None):
     """Add a fast failover group."""
+    assert datapath is None
     return groupadd(datapath, type_=ofp.OFPGT_FF, group_id=group_id, buckets=buckets)
 
 
 def groupdel(datapath=None, group_id=ofp.OFPG_ALL):
     """Delete a group (default all groups)."""
-    return parser.OFPGroupMod(
-        datapath,
-        ofp.OFPGC_DELETE,
-        0,
-        group_id)
+    assert datapath is None
+    return {
+        'type': 'GROUP_MOD',
+        'msg': {
+            'command': ofp.OFPGC_DELETE,
+            'type': 0,
+            'group_id': group_id,
+            'buckets': None
+        }
+    }
 
 
 def meterdel(datapath=None, meter_id=ofp.OFPM_ALL):
     """Delete a meter (default all meters)."""
-    return parser.OFPMeterMod(
-        datapath,
-        ofp.OFPMC_DELETE,
-        0,
-        meter_id)
+    assert datapath is None
+    return {
+        'type': 'METER_MOD',
+        'msg': {
+            'command': ofp.OFPMC_DELETE,
+            'flags': [],
+            'meter_id': meter_id,
+            'bands': []
+        }
+    }
 
 
 def meteradd(meter_conf):
     """Add a meter based on YAML configuration."""
-
-    class NoopDP:
-        """Fake DP to be able to use ofctl to parse meter config."""
-
-        id = 0
-        msg = None
-        ofproto = ofp
-        ofproto_parser = parser
-
-        def send_msg(self, msg):
-            """Save msg only."""
-            self.msg = msg
-
-        @staticmethod
-        def set_xid(msg):
-            """Clear msg XID."""
-            msg.xid = 0
-
-    noop_dp = NoopDP()
-    ofctl.mod_meter_entry(noop_dp, meter_conf, ofp.OFPMC_ADD)
-    noop_dp.msg.xid = None
-    noop_dp.msg.datapath = None
-    return noop_dp.msg
+    flags = meter_conf['flags']
+    if not isinstance(flags, (list, tuple)):
+        flags = [flags]
+    return {
+        'type': 'METER_MOD',
+        'msg': {
+            'command': 'ADD',
+            'flags': flags,
+            'meter_id': meter_conf['meter_id'],
+            'bands': meter_conf['bands']
+        }
+    }
 
 
 def controller_pps_meteradd(datapath=None, pps=0):
     """Add a PPS meter towards controller."""
-    return parser.OFPMeterMod(
-        datapath=datapath,
-        command=ofp.OFPMC_ADD,
-        flags=ofp.OFPMF_PKTPS,
-        meter_id=ofp.OFPM_CONTROLLER,
-        bands=[parser.OFPMeterBandDrop(rate=pps)])
+    assert datapath is None
+    return {
+        'type': 'METER_MOD',
+        'msg': {
+            'command': ofp.OFPMC_ADD,
+            'flags': ['PKTPS'],
+            'meter_id': 'CONTROLLER',
+            'bands': [{'type': 'DROP', 'rate': pps, 'burst_size': 0}]
+        }
+    }
 
 
 def controller_pps_meterdel(datapath=None):
     """Delete a PPS meter towards controller."""
-    return parser.OFPMeterMod(
-        datapath=datapath,
-        command=ofp.OFPMC_DELETE,
-        flags=ofp.OFPMF_PKTPS,
-        meter_id=ofp.OFPM_CONTROLLER)
+    assert datapath is None
+    return {
+        'type': 'METER_MOD',
+        'msg': {
+            'command': ofp.OFPMC_DELETE,
+            'flags': ['PKTPS'],
+            'meter_id': 'CONTROLLER'
+        }
+    }
 
 
 def is_global_flowdel(ofmsg):
     """Is a delete of all flows in all tables."""
-    return is_flowdel(ofmsg) and ofmsg.table_id == ofp.OFPTT_ALL and not ofmsg.match.items()
+    return is_flowdel(ofmsg) and ofmsg['msg']['table_id'] == ofp.OFPTT_ALL and not ofmsg['msg']['match']
 
 
 def is_global_groupdel(ofmsg):
     """Is a delete of all groups."""
-    return is_groupdel(ofmsg) and ofmsg.group_id == ofp.OFPG_ALL
+    return is_groupdel(ofmsg) and ofmsg['msg']['group_id'] == ofp.OFPG_ALL
 
 
 # We can tell right away what kind of OF messages these are.
 _MSG_KINDS_TYPES = {
-    parser.OFPPacketOut: 'packetout',
-    parser.OFPTableFeaturesStatsRequest: 'tfm',
+    'PACKET_OUT': 'packetout',
+    'TABLE_FEATURES_REQUEST': 'tfm',
 }
 
 
 # We need to examine the OF message more closely to classify it.
 _MSG_KINDS = {
-    parser.OFPFlowMod: (('deleteglobal', is_global_flowdel), ('delete', is_flowdel)),
-    parser.OFPGroupMod: (('deleteglobal', is_global_groupdel), ('delete', is_groupdel), ('groupadd', is_groupadd)),
-    parser.OFPMeterMod: (('delete', is_meterdel), ('meteradd', is_meteradd)),
+    'FLOW_MOD': (('deleteglobal', is_global_flowdel), ('delete', is_flowdel)),
+    'GROUP_MOD': (('deleteglobal', is_global_groupdel), ('delete', is_groupdel), ('groupadd', is_groupadd)),
+    'METER_MOD': (('delete', is_meterdel), ('meteradd', is_meteradd)),
 }
 
 
 def _msg_kind(ofmsg):
-    ofmsg_type = type(ofmsg)
+    ofmsg_type = ofmsg['type']
     ofmsg_kind = _MSG_KINDS_TYPES.get(ofmsg_type, None)
     if ofmsg_kind:
         return ofmsg_kind
@@ -868,7 +692,7 @@ def dedupe_ofmsgs(input_ofmsgs):
     """Return deduplicated ofmsg list."""
     # Built in comparison doesn't work until serialized() called
     # Can't use dict or json comparison as may be nested
-    deduped_input_ofmsgs = {str(ofmsg): ofmsg for ofmsg in input_ofmsgs}
+    deduped_input_ofmsgs = {_HashThing(ofmsg): ofmsg for ofmsg in input_ofmsgs}
     return list(deduped_input_ofmsgs.values())
 
 
@@ -882,6 +706,13 @@ _OFMSG_ORDER = (
     ('other', False, False),
     ('packetout', True, False),
 )
+
+
+def _has_priority(ofmsg):
+    msg = ofmsg.get('msg')
+    if msg:
+        return 'priority' in msg
+    return False
 
 
 def valve_flowreorder(input_ofmsgs, use_barriers=True):
@@ -904,11 +735,11 @@ def valve_flowreorder(input_ofmsgs, use_barriers=True):
             if random_order:
                 random.shuffle(ofmsgs)
             else:
-                with_priorities = [ofmsg for ofmsg in ofmsgs if hasattr(ofmsg, 'priority')]
+                with_priorities = [ofmsg for ofmsg in ofmsgs if _has_priority(ofmsg)]
                 # If priority present, send highest priority first.
                 if with_priorities:
-                    with_priorities.sort(key=lambda ofmsg: ofmsg.priority, reverse=True)
-                    without_priorities = [ofmsg for ofmsg in ofmsgs if not hasattr(ofmsg, 'priority')]
+                    with_priorities.sort(key=lambda ofmsg: ofmsg['msg']['priority'], reverse=True)
+                    without_priorities = [ofmsg for ofmsg in ofmsgs if not _has_priority(ofmsg)]
                     ofmsgs = without_priorities + with_priorities
             output_ofmsgs.extend(ofmsgs)
             if use_barriers and suggest_barrier:
@@ -948,31 +779,71 @@ def flood_port_outputs(tagged_ports, untagged_ports, in_port=None, exclude_ports
         flood_untagged_port_outputs(untagged_ports, in_port, exclude_ports))
 
 
-def faucet_config(datapath=None):
+def faucet_config(datapath=None):  # pylint: disable=unused-argument
     """Return switch config for FAUCET."""
-    return parser.OFPSetConfig(datapath, ofp.OFPC_FRAG_NORMAL, 0)
+    return {
+        'type': 'SET_CONFIG',
+        'msg': {
+            'flags': ['FRAG_NORMAL'],
+            'miss_send_len': 0
+        }
+    }
 
 
-def faucet_async(datapath=None, notify_flow_removed=False, packet_in=True, port_status=True):
-    """Return async message config for FAUCET/Gauge"""
-    packet_in_mask = 0
+def faucet_async(datapath=None, notify_flow_removed=False, packet_in=True, port_status=True):  # pylint: disable=unused-argument
+    """Return async message config for FAUCET."""
+    packet_in_mask = []
     if packet_in:
-        packet_in_mask = 1 << ofp.OFPR_ACTION
-    port_status_mask = 0
+        packet_in_mask = ['APPLY_ACTION']
+    port_status_mask = []
     if port_status:
-        port_status_mask = (
-            1 << ofp.OFPPR_ADD | 1 << ofp.OFPPR_DELETE | 1 << ofp.OFPPR_MODIFY)
-    flow_removed_mask = 0
+        port_status_mask = ['ADD', 'DELETE', 'MODIFY']
+    flow_removed_mask = []
     if notify_flow_removed:
-        flow_removed_mask = (
-            1 << ofp.OFPRR_IDLE_TIMEOUT | 1 << ofp.OFPRR_HARD_TIMEOUT)
-    return parser.OFPSetAsync(
-        datapath,
-        [packet_in_mask, packet_in_mask],
-        [port_status_mask, port_status_mask],
-        [flow_removed_mask, flow_removed_mask])
+        flow_removed_mask = ['IDLE_TIMEOUT', 'HARD_TIMEOUT']
+    return {
+        'type': 'SET_ASYNC',
+        'msg': {
+            'packet_in_master': packet_in_mask,
+            'packet_in_slave': packet_in_mask,
+            'port_status_master': port_status_mask,
+            'port_status_slave': port_status_mask,
+            'flow_removed_master': flow_removed_mask,
+            'flow_removed_slave': flow_removed_mask
+        }
+    }
 
 
 def desc_stats_request(datapath=None):
     """Query switch description."""
-    return parser.OFPDescStatsRequest(datapath, 0)
+    assert datapath is None
+    return {
+        'type': 'DESC_REQUEST'
+    }
+
+
+# Support for hashing dictionaries.
+
+def _hash_wrap(value):
+    """Hash a dictionary recursively.
+
+    Value is independent of iteration order for dicts, lists or tuples.
+    """
+    if isinstance(value, (dict, PktView)):
+        return sum(hash(k) * 11 + _hash_wrap(v) * 7 for k, v in list(value.items()))
+    if isinstance(value, (list, tuple)):
+        return sum(_hash_wrap(v) * 7 for v in value)
+    return hash(value)
+
+class _HashThing(object):
+    """Wraps unhashable dictionary/lists so they can be added to a set/dict."""
+
+    def __init__(self, value):
+        self.value = value
+        self.hash = _hash_wrap(value)
+
+    def __hash__(self):
+        return self.hash
+
+    def __eq__(self, other):
+        return self.value == other.value

@@ -201,9 +201,15 @@ def add_mac_address_to_match(match, eth_src):
     if not eth_src:
         return match
 
-    dict_match = dict(match.items())
-    dict_match['eth_src'] = eth_src
-    return valve_of.match_from_dict(dict_match)
+    for field in match:
+        if field['field'] == 'ETH_SRC':
+            assert 'mask' not in field
+            field['value'] = eth_src
+            break
+    else:
+        match.append({'field': 'ETH_SRC', 'value': eth_src})
+
+    return match
 
 
 class ValveAclManager(ValveManagerBase):
@@ -318,7 +324,7 @@ class ValveAclManager(ValveManagerBase):
             flowdels = []
             for flowmod in ofp_flowmods:
                 flowdels.append(self.port_acl_table.flowdel(
-                    match=flowmod.match, priority=flowmod.priority))
+                    match=flowmod['msg']['match'], priority=flowmod['msg']['priority']))
 
             return flowdels
 
@@ -326,7 +332,7 @@ class ValveAclManager(ValveManagerBase):
         flowmods = build_acl_port_of_msgs(acl, None, port_num, self.port_acl_table,
                                           pipeline_vlan_table, self.auth_priority)
         for flow in flowmods:
-            flow.match = add_mac_address_to_match(flow.match, mac)
+            add_mac_address_to_match(flow['msg']['match'], mac)
 
         return convert_to_flow_del(flowmods)
 
@@ -337,7 +343,7 @@ class ValveAclManager(ValveManagerBase):
                                           pipeline_vlan_table, self.auth_priority)
 
         for flow in flowmods:
-            flow.match = add_mac_address_to_match(flow.match, mac)
+            add_mac_address_to_match(flow['msg']['match'], mac)
 
         return flowmods
 
