@@ -2917,11 +2917,15 @@ vlans:
             vlan_match = match
             vlan_match['vid'] = vid
             vlan_pkt = build_pkt(match)
-        msg = namedtuple(
-            'null_msg',
-            ('match', 'in_port', 'data', 'total_len', 'cookie', 'reason'))(
-                {'in_port': port}, port, vlan_pkt.data, len(vlan_pkt.data),
-                valve.dp.cookie, valve_of.ofp.OFPR_ACTION)
+        msg = dict(
+            reason=valve_of.ofp.OFPR_ACTION,
+            data=b'',
+            total_len=0,
+            pkt=vlan_pkt,
+            in_port=port,
+            match={'in_port': port},
+            cookie=self.valve.dp.cookie
+        )
         self.last_flows_to_dp[dp_id] = []
         now = time.time()
         self.valves_manager.valve_packet_in(now, valve, msg)
