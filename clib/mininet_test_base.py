@@ -23,8 +23,6 @@ import yaml
 import netaddr
 import requests
 
-from ryu.ofproto import ofproto_v1_3 as ofp
-
 from mininet.link import TCLink # pylint: disable=import-error
 from mininet.log import error, output # pylint: disable=import-error
 from mininet.net import Mininet # pylint: disable=import-error
@@ -41,6 +39,10 @@ MIN_FLAP_TIME = 1
 PEER_BGP_AS = 2**16 + 1
 IPV4_ETH = 0x0800
 IPV6_ETH = 0x86dd
+
+class ofp:
+    OFPPS_LINK_DOWN = 1
+    OFPPC_PORT_DOWN = 1
 
 
 class FaucetTestBase(unittest.TestCase):
