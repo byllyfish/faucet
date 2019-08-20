@@ -552,7 +552,10 @@ class FaucetTestBase(unittest.TestCase):
                             self.quiet_commands(host, ['ip netns del %s' % hostns])
                         self.quiet_commands(host, ['ip netns add %s' % hostns])
                 return
-            self._stop_net()
+            try:
+                self._stop_net()
+            except TypeError:
+                pass  # ignore NoneType issue with os.kill()
             last_error_txt += '\n\n' + self._dump_controller_logs()
             error('%s: %s' % (self._test_name(), last_error_txt))
             time.sleep(mininet_test_util.MIN_PORT_AGE)
